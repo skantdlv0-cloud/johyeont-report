@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>조현T 국어 주간 학습 레포트 생성기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Pretendard Variable', 'Pretendard', 'Noto Sans KR', sans-serif;
+    background: linear-gradient(135deg, #FFE4EC 0%, #E8DAFF 100%);
+    min-height: 100vh;
+    padding: 20px;
+    color: #4a3a5c;
+    line-height: 1.6;
+  }
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .page-title {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 900;
+    color: #7c5b95;
+    margin-bottom: 8px;
+    padding-top: 16px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: #9c7ab5;
+    margin-bottom: 28px;
+    font-size: 14px;
+  }
+  .card {
+    background: #ffffff;
+    border-radius: 22px;
+    padding: 24px;
+    margin-bottom: 18px;
+    box-shadow: 0 8px 24px rgba(200, 182, 255, 0.18);
+  }
+  .card-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #7c5b95;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .form-group {
+    margin-bottom: 14px;
+    flex: 1;
+    min-width: 140px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #7c5b95;
+    margin-bottom: 6px;
+  }
+  input[type="text"], input[type="number"], input[type="date"], textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid #F3E5F5;
+    border-radius: 14px;
+    font-size: 15px;
+    font-family: inherit;
+    background: #FAF6FF;
+    color: #4a3a5c;
+    transition: all 0.2s ease;
+  }
+  input:focus, textarea:focus {
+    outline: none;
+    border-color: #C8B6FF;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(200, 182, 255, 0.18);
+  }
+  textarea {
+    min-height: 120px;
+    resize: vertical;
+    line-height: 1.6;
+  }
+  .add-btn {
+    background: linear-gradient(135deg, #FFC4D6, #C8B6FF);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+    font-family: inherit;
+    box-shadow: 0 4px 12px rgba(200, 182, 255, 0.3);
+    transition: transform 0.15s ease;
+  }
+  .add-btn:hover { transform: translateY(-1px); }
+  .list-item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .list-item input { flex: 1; }
+  .list-item .item-name { flex: 2; }
+  .list-item .item-score { flex: 1; max-width: 100px; }
+  .remove-btn {
+    background: #ffe0ec;
+    color: #d56b9a;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+  }
+  .remove-btn:hover { background: #ffc4d6; color: white; }
+
+  .stars { display: flex; gap: 6px; font-size: 36px; user-select: none; }
+  .star {
+    cursor: pointer;
+    color: #E8DAFF;
+    transition: transform 0.15s ease, color 0.15s ease;
+  }
+  .star.active { color: #FFD93D; }
+  .star:hover { transform: scale(1.15); }
+
+  .day-checkboxes {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .day-checkbox {
+    flex: 1;
+    min-width: 60px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .day-checkbox input { display: none; }
+  .day-label {
+    display: block;
+    padding: 14px 0;
+    border: 2px solid #F3E5F5;
+    border-radius: 14px;
+    background: #FAF6FF;
+    font-weight: 600;
+    color: #9c7ab5;
+    transition: all 0.2s ease;
+  }
+  .day-checkbox input:checked + .day-label {
+    background: linear-gradient(135deg, #FFC4D6, #C8B6FF);
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 4px 12px rgba(200, 182, 255, 0.35);
+  }
+
+  .generate-btn {
+    width: 100%;
+    background: linear-gradient(135deg, #FFC4D6 0%, #C8B6FF 100%);
+    color: white;
+    border: none;
+    padding: 20px;
+    border-radius: 20px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 20px 0 12px;
+    font-family: inherit;
+    box-shadow: 0 8px 24px rgba(200, 182, 255, 0.4);
+    transition: transform 0.15s ease;
+  }
+  .generate-btn:hover { transform: translateY(-2px); }
+
+  .result-box {
+    background: #ffffff;
+    border-radius: 22px;
+    padding: 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 8px 24px rgba(200, 182, 255, 0.18);
+    display: none;
+  }
+  .result-box.show { display: block; }
+  .result-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #7c5b95;
+    margin-bottom: 10px;
+  }
+  .result-url {
+    background: #FAF6FF;
+    border: 2px solid #F3E5F5;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 12px;
+    word-break: break-all;
+    color: #6b5482;
+    max-height: 100px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    font-family: 'Courier New', monospace;
+  }
+  .result-actions { display: flex; gap: 10px; }
+  .action-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s ease;
+  }
+  .copy-btn {
+    background: linear-gradient(135deg, #FFE4EC, #FFC4D6);
+    color: #7c5b95;
+  }
+  .preview-btn {
+    background: linear-gradient(135deg, #E8DAFF, #C8B6FF);
+    color: #5a3f7a;
+  }
+  .action-btn:hover { transform: translateY(-1px); }
+
+  .toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(120px);
+    background: rgba(124, 91, 149, 0.95);
+    color: white;
+    padding: 14px 28px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 8px 24px rgba(124, 91, 149, 0.3);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    .card { padding: 18px; }
+    .page-title { font-size: 22px; }
+    .form-row { flex-direction: column; gap: 0; }
+    .day-checkbox { min-width: 50px; }
+    .day-label { padding: 12px 0; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1 class="page-title">📚 조현T 국어 주간 학습 레포트</h1>
+  <p class="page-subtitle">학부모님께 보낼 예쁜 레포트를 만들어요 💗</p>
+
+  <div class="card">
+    <h2 class="card-title">✏️ 기본 정보</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="school">학교</label>
+        <input type="text" id="school" placeholder="예) ○○초등학교" />
+      </div>
+      <div class="form-group">
+        <label for="grade">학년</label>
+        <input type="text" id="grade" placeholder="예) 6학년" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="studentName">학생 이름</label>
+      <input type="text" id="studentName" placeholder="예) 김민지" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="startDate">보고 시작일</label>
+        <input type="date" id="startDate" />
+      </div>
+      <div class="form-group">
+        <label for="endDate">보고 종료일</label>
+        <input type="date" id="endDate" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">📅 출결</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="attendDays">출석</label>
+        <input type="number" id="attendDays" min="0" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label for="absentDays">결석</label>
+        <input type="number" id="absentDays" min="0" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label for="lateDays">지각</label>
+        <input type="number" id="lateDays" min="0" placeholder="0" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">📖 이번주 학습 내용</h2>
+    <div id="lessonList"></div>
+    <button type="button" class="add-btn" onclick="addLesson()">+ 항목 추가</button>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">⭐ 수업 집중도</h2>
+    <div class="stars" id="focusStars">
+      <span class="star" data-value="1">★</span>
+      <span class="star" data-value="2">★</span>
+      <span class="star" data-value="3">★</span>
+      <span class="star" data-value="4">★</span>
+      <span class="star" data-value="5">★</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">📝 리뷰테스트 점수 <span style="font-size:13px;color:#9c7ab5;font-weight:500;">(만점 100점)</span></h2>
+    <div id="testList"></div>
+    <button type="button" class="add-btn" onclick="addTest()">+ 항목 추가</button>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">✅ 과제 수행 체크</h2>
+    <div class="day-checkboxes">
+      <label class="day-checkbox"><input type="checkbox" data-day="월" /><span class="day-label">월</span></label>
+      <label class="day-checkbox"><input type="checkbox" data-day="화" /><span class="day-label">화</span></label>
+      <label class="day-checkbox"><input type="checkbox" data-day="수" /><span class="day-label">수</span></label>
+      <label class="day-checkbox"><input type="checkbox" data-day="목" /><span class="day-label">목</span></label>
+      <label class="day-checkbox"><input type="checkbox" data-day="금" /><span class="day-label">금</span></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">📊 과제 제출률</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="submitRate">과제 제출률 (%)</label>
+        <input type="number" id="submitRate" min="0" max="100" placeholder="0~100" />
+      </div>
+      <div class="form-group">
+        <label for="onTimeRate">정시 제출률 (%)</label>
+        <input type="number" id="onTimeRate" min="0" max="100" placeholder="0~100" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">🎬 영상 코칭 시청율</h2>
+    <div class="form-group">
+      <label for="videoRate">시청율 (%)</label>
+      <input type="number" id="videoRate" min="0" max="100" placeholder="0~100" />
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">💌 조현T 종합 코멘트</h2>
+    <textarea id="comment" placeholder="이번주 학생의 학습에 대한 따뜻한 코멘트를 작성해주세요."></textarea>
+  </div>
+
+  <button class="generate-btn" onclick="generateLink()">🔗 학부모 발송 링크 생성</button>
+
+  <div class="result-box" id="resultBox">
+    <p class="result-label">✨ 생성된 학부모 발송 링크</p>
+    <div class="result-url" id="resultUrl"></div>
+    <div class="result-actions">
+      <button class="action-btn copy-btn" onclick="copyLink()">📋 복사</button>
+      <button class="action-btn preview-btn" onclick="previewLink()">👁️ 미리보기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">복사되었습니다 💗</div>
+
+<script>
+  const STORAGE_KEY = 'johyunT_report_draft';
+  let focusScore = 0;
+  let generatedUrl = '';
+
+  // ---- 학습 내용 항목 ----
+  function addLesson(value = '') {
+    const list = document.getElementById('lessonList');
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    div.innerHTML = `
+      <input type="text" class="lesson-input" placeholder="예) 비문학 독해 - 과학" value="${escapeAttr(value)}" />
+      <button type="button" class="remove-btn" onclick="this.parentElement.remove(); saveDraft();">×</button>
+    `;
+    list.appendChild(div);
+    div.querySelector('input').addEventListener('input', saveDraft);
+  }
+
+  // ---- 리뷰테스트 항목 ----
+  function addTest(name = '', score = '') {
+    const list = document.getElementById('testList');
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    div.innerHTML = `
+      <input type="text" class="test-name item-name" placeholder="시험명" value="${escapeAttr(name)}" />
+      <input type="number" class="test-score item-score" min="0" max="100" placeholder="점수" value="${escapeAttr(score)}" />
+      <button type="button" class="remove-btn" onclick="this.parentElement.remove(); saveDraft();">×</button>
+    `;
+    list.appendChild(div);
+    div.querySelectorAll('input').forEach(i => i.addEventListener('input', saveDraft));
+  }
+
+  function escapeAttr(v) {
+    return String(v).replace(/"/g, '&quot;');
+  }
+
+  // ---- 별점 ----
+  const stars = document.querySelectorAll('#focusStars .star');
+  stars.forEach(star => {
+    star.addEventListener('click', () => {
+      focusScore = parseInt(star.dataset.value);
+      updateStars();
+      saveDraft();
+    });
+  });
+  function updateStars() {
+    stars.forEach(s => {
+      if (parseInt(s.dataset.value) <= focusScore) s.classList.add('active');
+      else s.classList.remove('active');
+    });
+  }
+
+  // ---- 데이터 수집 ----
+  function collectData() {
+    const lessons = Array.from(document.querySelectorAll('.lesson-input'))
+      .map(i => i.value.trim())
+      .filter(v => v);
+
+    const tests = Array.from(document.querySelectorAll('#testList .list-item'))
+      .map(item => ({
+        name: item.querySelector('.test-name').value.trim(),
+        score: parseFloat(item.querySelector('.test-score').value) || 0
+      }))
+      .filter(t => t.name);
+
+    const homework = {};
+    document.querySelectorAll('.day-checkbox input').forEach(cb => {
+      homework[cb.dataset.day] = cb.checked;
+    });
+
+    return {
+      school: document.getElementById('school').value.trim(),
+      grade: document.getElementById('grade').value.trim(),
+      studentName: document.getElementById('studentName').value.trim(),
+      startDate: document.getElementById('startDate').value,
+      endDate: document.getElementById('endDate').value,
+      attendance: {
+        attend: parseInt(document.getElementById('attendDays').value) || 0,
+        absent: parseInt(document.getElementById('absentDays').value) || 0,
+        late: parseInt(document.getElementById('lateDays').value) || 0
+      },
+      lessons,
+      focusScore,
+      tests,
+      homework,
+      submitRate: parseFloat(document.getElementById('submitRate').value) || 0,
+      onTimeRate: parseFloat(document.getElementById('onTimeRate').value) || 0,
+      videoRate: parseFloat(document.getElementById('videoRate').value) || 0,
+      comment: document.getElementById('comment').value
+    };
+  }
+
+  // ---- 데이터 복원 ----
+  function loadDraft() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        addLesson(); addLesson(); addLesson();
+        addTest();
+        return;
+      }
+      const data = JSON.parse(raw);
+      document.getElementById('school').value = data.school || '';
+      document.getElementById('grade').value = data.grade || '';
+      document.getElementById('studentName').value = data.studentName || '';
+      document.getElementById('startDate').value = data.startDate || '';
+      document.getElementById('endDate').value = data.endDate || '';
+      document.getElementById('attendDays').value = data.attendance?.attend ?? '';
+      document.getElementById('absentDays').value = data.attendance?.absent ?? '';
+      document.getElementById('lateDays').value = data.attendance?.late ?? '';
+      (data.lessons && data.lessons.length ? data.lessons : ['']).forEach(l => addLesson(l));
+      focusScore = data.focusScore || 0;
+      updateStars();
+      (data.tests && data.tests.length ? data.tests : [{name:'',score:''}]).forEach(t => addTest(t.name, t.score));
+      if (data.homework) {
+        document.querySelectorAll('.day-checkbox input').forEach(cb => {
+          cb.checked = !!data.homework[cb.dataset.day];
+        });
+      }
+      document.getElementById('submitRate').value = data.submitRate ?? '';
+      document.getElementById('onTimeRate').value = data.onTimeRate ?? '';
+      document.getElementById('videoRate').value = data.videoRate ?? '';
+      document.getElementById('comment').value = data.comment || '';
+    } catch (e) {
+      console.error('복원 실패', e);
+      addLesson(); addTest();
+    }
+  }
+
+  // ---- 임시 저장 ----
+  function saveDraft() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(collectData()));
+    } catch (e) { /* ignore */ }
+  }
+
+  document.addEventListener('input', saveDraft);
+  document.addEventListener('change', saveDraft);
+
+  // ---- 링크 생성 ----
+  function generateLink() {
+    const data = collectData();
+
+    if (!data.studentName) {
+      showToast('학생 이름을 입력해주세요 🙏');
+      return;
+    }
+
+    const json = JSON.stringify(data);
+    // 한글 안전 base64
+    const encoded = btoa(unescape(encodeURIComponent(json)));
+    const param = encodeURIComponent(encoded);
+
+    const baseUrl = window.location.href.replace(/create\.html.*$/, 'report.html');
+    generatedUrl = `${baseUrl}?data=${param}`;
+
+    document.getElementById('resultUrl').textContent = generatedUrl;
+    const box = document.getElementById('resultBox');
+    box.classList.add('show');
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function copyLink() {
+    if (!generatedUrl) return;
+    navigator.clipboard.writeText(generatedUrl).then(() => {
+      showToast('링크가 복사되었어요 💗');
+    }).catch(() => {
+      // 폴백
+      const ta = document.createElement('textarea');
+      ta.value = generatedUrl;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('링크가 복사되었어요 💗');
+    });
+  }
+
+  function previewLink() {
+    if (!generatedUrl) return;
+    window.open(generatedUrl, '_blank');
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  // ---- 초기화 ----
+  loadDraft();
+</script>
+</body>
+</html>

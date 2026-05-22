@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>조현T 국어 주간 학습 레포트</title>
+
+<meta property="og:title" content="조현T 국어 주간 학습 레포트" />
+<meta property="og:description" content="이번주 우리 아이의 학습을 한눈에 확인해보세요 💗" />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="" />
+<meta property="og:locale" content="ko_KR" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="조현T 국어 주간 학습 레포트" />
+<meta name="twitter:description" content="이번주 우리 아이의 학습을 한눈에 확인해보세요 💗" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Nanum+Pen+Script&family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Pretendard Variable', 'Pretendard', 'Noto Sans KR', sans-serif;
+    background: linear-gradient(135deg, #FFE4EC 0%, #E8DAFF 100%);
+    min-height: 100vh;
+    padding: 16px;
+    color: #4a3a5c;
+    line-height: 1.6;
+  }
+  .container {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  .header {
+    text-align: center;
+    padding: 28px 20px 24px;
+    background: linear-gradient(135deg, #FFC4D6 0%, #C8B6FF 100%);
+    border-radius: 28px;
+    margin-bottom: 20px;
+    color: white;
+    box-shadow: 0 10px 30px rgba(200, 182, 255, 0.35);
+  }
+  .header-emoji { font-size: 38px; margin-bottom: 8px; }
+  .header-title {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .header-period {
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0.95;
+    background: rgba(255,255,255,0.22);
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 20px;
+  }
+
+  .card {
+    background: #ffffff;
+    border-radius: 22px;
+    padding: 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 24px rgba(200, 182, 255, 0.18);
+  }
+  .card-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: #7c5b95;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* 학생 정보 */
+  .student-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .info-item {
+    background: linear-gradient(135deg, #FFE4EC 0%, #E8DAFF 100%);
+    border-radius: 16px;
+    padding: 14px 8px;
+    text-align: center;
+  }
+  .info-label {
+    font-size: 11px;
+    color: #9c7ab5;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .info-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #5a3f7a;
+    word-break: keep-all;
+  }
+
+  /* 출결 */
+  .attendance-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .att-item {
+    text-align: center;
+    padding: 16px 8px;
+    border-radius: 18px;
+  }
+  .att-item.attend { background: linear-gradient(135deg, #E8F5E9, #C8E6C9); }
+  .att-item.absent { background: linear-gradient(135deg, #FFEBEE, #FFCDD2); }
+  .att-item.late { background: linear-gradient(135deg, #FFF8E1, #FFECB3); }
+  .att-icon { font-size: 26px; margin-bottom: 4px; }
+  .att-num {
+    font-size: 24px;
+    font-weight: 900;
+    color: #5a3f7a;
+  }
+  .att-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #7c5b95;
+    margin-top: 2px;
+  }
+
+  /* 학습 내용 */
+  .lesson-list { list-style: none; }
+  .lesson-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, #FAF6FF, #FFF5F8);
+    border-radius: 14px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #5a3f7a;
+  }
+  .lesson-check {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FFC4D6, #C8B6FF);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+
+  /* 별점 */
+  .focus-stars {
+    text-align: center;
+    font-size: 38px;
+    letter-spacing: 4px;
+  }
+  .focus-star { color: #E8DAFF; }
+  .focus-star.active { color: #FFD93D; }
+  .focus-score-text {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 14px;
+    color: #9c7ab5;
+    font-weight: 600;
+  }
+
+  /* 리뷰테스트 */
+  .test-item {
+    background: linear-gradient(135deg, #FAF6FF, #FFF5F8);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .test-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .test-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #5a3f7a;
+  }
+  .test-score-text {
+    font-size: 16px;
+    font-weight: 800;
+    color: #7c5b95;
+  }
+  .progress-bar {
+    height: 10px;
+    background: #F3E5F5;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FFC4D6, #C8B6FF);
+    border-radius: 10px;
+    transition: width 0.6s ease;
+  }
+
+  /* 과제 수행 */
+  .homework-days {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .hw-day {
+    flex: 1;
+    text-align: center;
+  }
+  .hw-circle {
+    width: 100%;
+    aspect-ratio: 1;
+    max-width: 56px;
+    margin: 0 auto 6px;
+    border-radius: 50%;
+    background: #FCE7EE;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: #d9a3b8;
+    font-weight: 700;
+    opacity: 0.5;
+    transition: all 0.2s ease;
+  }
+  .hw-circle.done {
+    background: linear-gradient(135deg, #FFC4D6, #C8B6FF);
+    color: white;
+    opacity: 1;
+    box-shadow: 0 4px 12px rgba(200, 182, 255, 0.35);
+  }
+  .hw-mark {
+    width: 60%;
+    height: 60%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .hw-circle.done .hw-mark {
+    border: 4px solid white;
+    background: transparent;
+  }
+  .hw-day-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #7c5b95;
+  }
+
+  /* 제출률 */
+  .rate-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .rate-circle-wrapper {
+    background: linear-gradient(135deg, #FAF6FF, #FFF5F8);
+    border-radius: 18px;
+    padding: 18px 10px;
+    text-align: center;
+  }
+  .rate-circle {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    margin: 0 auto 8px;
+  }
+  .rate-circle svg {
+    transform: rotate(-90deg);
+    width: 100%;
+    height: 100%;
+  }
+  .rate-circle-bg { stroke: #F3E5F5; }
+  .rate-circle-fill {
+    stroke: url(#gradFill);
+    transition: stroke-dashoffset 0.8s ease;
+    stroke-linecap: round;
+  }
+  .rate-num {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 22px;
+    font-weight: 900;
+    color: #5a3f7a;
+  }
+  .rate-num small { font-size: 13px; font-weight: 700; color: #9c7ab5; }
+  .rate-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #7c5b95;
+  }
+
+  /* 영상 시청율 */
+  .video-rate {
+    text-align: center;
+    padding: 6px 0 4px;
+  }
+  .video-num {
+    font-size: 44px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #FFC4D6, #C8B6FF);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    line-height: 1;
+  }
+  .video-num small {
+    font-size: 20px;
+    -webkit-text-fill-color: #9c7ab5;
+  }
+  .video-bar {
+    height: 14px;
+    background: #F3E5F5;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 14px;
+  }
+  .video-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FFC4D6, #C8B6FF);
+    border-radius: 10px;
+    transition: width 0.8s ease;
+  }
+
+  /* 코멘트 */
+  .comment-box {
+    position: relative;
+    background: linear-gradient(135deg, #FFF5F8, #FAF6FF);
+    border-radius: 20px;
+    padding: 28px 22px 22px;
+    font-size: 15px;
+    line-height: 1.8;
+    color: #5a3f7a;
+    font-weight: 500;
+    white-space: pre-wrap;
+    word-break: keep-all;
+  }
+  .comment-quote-open, .comment-quote-close {
+    position: absolute;
+    font-family: 'Georgia', serif;
+    font-size: 60px;
+    color: #C8B6FF;
+    line-height: 1;
+    opacity: 0.7;
+  }
+  .comment-quote-open { top: 4px; left: 12px; }
+  .comment-quote-close { bottom: -20px; right: 14px; }
+
+  /* 푸터 */
+  .footer {
+    text-align: center;
+    padding: 30px 20px;
+    margin-top: 10px;
+  }
+  .footer-sign {
+    font-family: 'Nanum Pen Script', 'Gaegu', cursive;
+    font-size: 32px;
+    color: #7c5b95;
+    line-height: 1.4;
+  }
+  .footer-heart {
+    color: #d56b9a;
+  }
+  .footer-sub {
+    font-size: 12px;
+    color: #9c7ab5;
+    margin-top: 4px;
+  }
+
+  /* 에러 */
+  .error-box {
+    background: white;
+    border-radius: 22px;
+    padding: 60px 30px;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(200, 182, 255, 0.18);
+    margin-top: 60px;
+  }
+  .error-emoji { font-size: 60px; margin-bottom: 16px; }
+  .error-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #7c5b95;
+    margin-bottom: 10px;
+  }
+  .error-desc {
+    font-size: 14px;
+    color: #9c7ab5;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 380px) {
+    .header-title { font-size: 19px; }
+    .info-value { font-size: 13px; }
+    .att-num { font-size: 20px; }
+    .focus-stars { font-size: 32px; }
+    .rate-circle { width: 95px; height: 95px; }
+    .rate-num { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="gradFill" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFC4D6"/>
+      <stop offset="100%" stop-color="#C8B6FF"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="container" id="reportRoot">
+  <!-- 동적 렌더링 -->
+</div>
+
+<script>
+  function getData() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('data');
+      if (!raw) return null;
+      // 한글 안전 base64 디코딩
+      const json = decodeURIComponent(escape(atob(decodeURIComponent(raw))));
+      return JSON.parse(json);
+    } catch (e) {
+      console.error('데이터 디코딩 실패', e);
+      return null;
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    const [y, m, day] = d.split('-');
+    return `${y}.${m}.${day}`;
+  }
+
+  function renderError() {
+    document.getElementById('reportRoot').innerHTML = `
+      <div class="error-box">
+        <div class="error-emoji">😢</div>
+        <div class="error-title">잘못된 링크입니다</div>
+        <div class="error-desc">레포트 데이터를 불러올 수 없어요.<br/>선생님께 다시 확인 부탁드려요.</div>
+      </div>
+    `;
+  }
+
+  function renderStars(score) {
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+      html += `<span class="focus-star ${i <= score ? 'active' : ''}">★</span>`;
+    }
+    return html;
+  }
+
+  function renderRateCircle(value, label) {
+    const radius = 45;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (value / 100) * circumference;
+    return `
+      <div class="rate-circle-wrapper">
+        <div class="rate-circle">
+          <svg viewBox="0 0 110 110">
+            <circle class="rate-circle-bg" cx="55" cy="55" r="${radius}" fill="none" stroke-width="10"/>
+            <circle class="rate-circle-fill" cx="55" cy="55" r="${radius}" fill="none" stroke-width="10"
+              stroke-dasharray="${circumference}"
+              stroke-dashoffset="${offset}" />
+          </svg>
+          <div class="rate-num">${value}<small>%</small></div>
+        </div>
+        <div class="rate-label">${label}</div>
+      </div>
+    `;
+  }
+
+  function render(data) {
+    const period = data.startDate && data.endDate
+      ? `${formatDate(data.startDate)} ~ ${formatDate(data.endDate)}`
+      : '';
+
+    const lessons = (data.lessons || []).filter(Boolean);
+    const tests = data.tests || [];
+    const homework = data.homework || {};
+    const days = ['월', '화', '수', '목', '금'];
+
+    let html = `
+      <div class="header">
+        <div class="header-emoji">📚</div>
+        <div class="header-title">조현T 국어<br/>주간 학습 레포트</div>
+        ${period ? `<div class="header-period">📅 ${period}</div>` : ''}
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">👧 학생 정보</h2>
+        <div class="student-info">
+          <div class="info-item">
+            <div class="info-label">학교</div>
+            <div class="info-value">${escapeHtml(data.school) || '-'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">학년</div>
+            <div class="info-value">${escapeHtml(data.grade) || '-'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">이름</div>
+            <div class="info-value">${escapeHtml(data.studentName) || '-'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">📅 출결</h2>
+        <div class="attendance-grid">
+          <div class="att-item attend">
+            <div class="att-icon">🌸</div>
+            <div class="att-num">${data.attendance?.attend ?? 0}</div>
+            <div class="att-label">출석</div>
+          </div>
+          <div class="att-item absent">
+            <div class="att-icon">🚫</div>
+            <div class="att-num">${data.attendance?.absent ?? 0}</div>
+            <div class="att-label">결석</div>
+          </div>
+          <div class="att-item late">
+            <div class="att-icon">⏰</div>
+            <div class="att-num">${data.attendance?.late ?? 0}</div>
+            <div class="att-label">지각</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (lessons.length) {
+      html += `
+        <div class="card">
+          <h2 class="card-title">📖 이번주 학습 내용</h2>
+          <ul class="lesson-list">
+            ${lessons.map(l => `
+              <li class="lesson-item">
+                <span class="lesson-check">✓</span>
+                <span>${escapeHtml(l)}</span>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="card">
+        <h2 class="card-title">⭐ 수업 집중도</h2>
+        <div class="focus-stars">${renderStars(data.focusScore || 0)}</div>
+        <div class="focus-score-text">${data.focusScore || 0} / 5 점</div>
+      </div>
+    `;
+
+    if (tests.length) {
+      html += `
+        <div class="card">
+          <h2 class="card-title">📝 리뷰테스트 점수</h2>
+          ${tests.map(t => {
+            const score = Math.max(0, Math.min(100, t.score || 0));
+            return `
+              <div class="test-item">
+                <div class="test-header">
+                  <span class="test-name">${escapeHtml(t.name)}</span>
+                  <span class="test-score-text">${score} <small style="font-size:12px;color:#9c7ab5;">/ 100</small></span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: ${score}%;"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="card">
+        <h2 class="card-title">✅ 과제 수행</h2>
+        <div class="homework-days">
+          ${days.map(d => `
+            <div class="hw-day">
+              <div class="hw-circle ${homework[d] ? 'done' : ''}">
+                <span class="hw-mark">${homework[d] ? '' : '✗'}</span>
+              </div>
+              <div class="hw-day-label">${d}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">📊 과제 제출률</h2>
+        <div class="rate-grid">
+          ${renderRateCircle(Math.round(data.submitRate || 0), '과제 제출률')}
+          ${renderRateCircle(Math.round(data.onTimeRate || 0), '정시 제출률')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🎬 영상 코칭 시청율</h2>
+        <div class="video-rate">
+          <div class="video-num">${Math.round(data.videoRate || 0)}<small>%</small></div>
+        </div>
+        <div class="video-bar">
+          <div class="video-fill" style="width: ${Math.min(100, Math.max(0, data.videoRate || 0))}%;"></div>
+        </div>
+      </div>
+    `;
+
+    if (data.comment && data.comment.trim()) {
+      html += `
+        <div class="card">
+          <h2 class="card-title">💌 조현T 종합 코멘트</h2>
+          <div class="comment-box">
+            <span class="comment-quote-open">“</span>
+            ${escapeHtml(data.comment)}
+            <span class="comment-quote-close">”</span>
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="footer">
+        <div class="footer-sign">
+          <span class="footer-heart">💗</span> 조현T 드림
+        </div>
+        <div class="footer-sub">이번주도 함께해주셔서 감사합니다</div>
+      </div>
+    `;
+
+    document.getElementById('reportRoot').innerHTML = html;
+
+    // OG 메타태그 동적 업데이트
+    if (data.studentName) {
+      const desc = `${data.studentName} 학생 · ${period || '이번주 학습 레포트'}`;
+      document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
+      document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', desc);
+      document.title = `${data.studentName} 학생 · 조현T 국어 주간 학습 레포트`;
+    }
+  }
+
+  const data = getData();
+  if (!data) {
+    renderError();
+  } else {
+    render(data);
+  }
+</script>
+</body>
+</html>
