@@ -542,8 +542,8 @@
     const encoded = btoa(unescape(encodeURIComponent(json)));
     const param = encodeURIComponent(encoded);
 
-    const baseUrl = window.location.href.replace(/create\.html.*$/, 'report.html');
-    generatedUrl = `${baseUrl}?data=${param}`;
+    const REPORT_BASE_URL = 'https://skantdlv0-cloud.github.io/johyeont-report/report.html';
+    generatedUrl = `${REPORT_BASE_URL}?data=${param}`;
 
     document.getElementById('resultUrl').textContent = generatedUrl;
     const box = document.getElementById('resultBox');
