@@ -185,11 +185,12 @@
     transition: transform 0.15s ease;
   }
   .generate-btn:hover { transform: translateY(-2px); }
+  .generate-btn:disabled { opacity: 0.7; cursor: wait; transform: none; }
 
   .result-box {
     background: #ffffff;
     border-radius: 22px;
-    padding: 20px;
+    padding: 22px;
     margin-bottom: 30px;
     box-shadow: 0 8px 24px rgba(200, 182, 255, 0.18);
     display: none;
@@ -199,21 +200,81 @@
     font-size: 14px;
     font-weight: 600;
     color: #7c5b95;
-    margin-bottom: 10px;
-  }
-  .result-url {
-    background: #FAF6FF;
-    border: 2px solid #F3E5F5;
-    border-radius: 12px;
-    padding: 12px;
-    font-size: 12px;
-    word-break: break-all;
-    color: #6b5482;
-    max-height: 100px;
-    overflow-y: auto;
     margin-bottom: 12px;
-    font-family: 'Courier New', monospace;
   }
+  .short-url {
+    background: linear-gradient(135deg, #FFF5F8, #FAF6FF);
+    border: 2px solid #E8DAFF;
+    border-radius: 16px;
+    padding: 22px 18px;
+    text-align: center;
+    margin-bottom: 14px;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: #5a3f7a;
+    word-break: break-all;
+    line-height: 1.5;
+    letter-spacing: -0.3px;
+  }
+  .url-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #9c7ab5;
+    margin-bottom: 14px;
+    padding: 0 4px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .url-meta .badge-ok {
+    background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
+    color: #2e7d32;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+  }
+  .url-meta .badge-warn {
+    background: linear-gradient(135deg, #FFF8E1, #FFE0B2);
+    color: #b26a00;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+  }
+  .url-meta .original-len {
+    color: #b59ac8;
+    font-size: 11px;
+  }
+  .result-warn {
+    background: #FFF4E5;
+    border: 2px dashed #FFB74D;
+    color: #8a5a00;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .loading-box {
+    text-align: center;
+    padding: 24px 12px;
+    color: #7c5b95;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .loading-spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 3px solid #E8DAFF;
+    border-top-color: #C8B6FF;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .result-actions { display: flex; gap: 10px; }
   .action-btn {
     flex: 1;
@@ -375,14 +436,26 @@
     <textarea id="comment" placeholder="이번주 학생의 학습에 대한 따뜻한 코멘트를 작성해주세요."></textarea>
   </div>
 
-  <button class="generate-btn" onclick="generateLink()">🔗 학부모 발송 링크 생성</button>
+  <button class="generate-btn" id="generateBtn" onclick="generateLink()">🔗 학부모 발송 링크 생성</button>
 
   <div class="result-box" id="resultBox">
-    <p class="result-label">✨ 생성된 학부모 발송 링크</p>
-    <div class="result-url" id="resultUrl"></div>
-    <div class="result-actions">
-      <button class="action-btn copy-btn" onclick="copyLink()">📋 복사</button>
-      <button class="action-btn preview-btn" onclick="previewLink()">👁️ 미리보기</button>
+    <p class="result-label">✨ 학부모 발송 링크</p>
+
+    <div class="loading-box" id="loadingBox" style="display:none;">
+      <span class="loading-spinner"></span>링크 단축 중...
+    </div>
+
+    <div id="resultContent" style="display:none;">
+      <div class="result-warn" id="resultWarn" style="display:none;">⚠️ 단축 실패, 원본 링크를 사용해주세요</div>
+      <div class="short-url" id="shortUrl"></div>
+      <div class="url-meta">
+        <span class="badge-ok" id="lengthBadge">링크 길이: 0자</span>
+        <span class="original-len" id="originalLen"></span>
+      </div>
+      <div class="result-actions">
+        <button class="action-btn copy-btn" onclick="copyLink()">📋 복사</button>
+        <button class="action-btn preview-btn" onclick="previewLink()">👁️ 미리보기</button>
+      </div>
     </div>
   </div>
 </div>
@@ -528,8 +601,52 @@
   document.addEventListener('input', saveDraft);
   document.addEventListener('change', saveDraft);
 
+  // ---- 링크 단축 ----
+  // 여러 단축 서비스를 순차적으로 시도
+  async function shortenUrl(longUrl) {
+    const services = [
+      // 1) TinyURL 직접 호출
+      {
+        name: 'TinyURL',
+        fetch: () => fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`)
+      },
+      // 2) is.gd 직접 호출
+      {
+        name: 'is.gd',
+        fetch: () => fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`)
+      },
+      // 3) CORS 프록시 + TinyURL
+      {
+        name: 'TinyURL (proxy)',
+        fetch: () => fetch(`https://corsproxy.io/?${encodeURIComponent('https://tinyurl.com/api-create.php?url=' + encodeURIComponent(longUrl))}`)
+      },
+      // 4) CORS 프록시 + is.gd
+      {
+        name: 'is.gd (proxy)',
+        fetch: () => fetch(`https://corsproxy.io/?${encodeURIComponent('https://is.gd/create.php?format=simple&url=' + encodeURIComponent(longUrl))}`)
+      }
+    ];
+
+    for (const svc of services) {
+      try {
+        const res = await svc.fetch();
+        if (!res.ok) continue;
+        const text = (await res.text()).trim();
+        if (/^https?:\/\/\S+$/.test(text) && text.length < longUrl.length) {
+          console.log(`[단축 성공] ${svc.name}: ${text}`);
+          return text;
+        }
+      } catch (e) {
+        console.warn(`[단축 실패] ${svc.name}:`, e.message);
+      }
+    }
+    return null;
+  }
+
   // ---- 링크 생성 ----
-  function generateLink() {
+  let originalUrlLength = 0;
+
+  async function generateLink() {
     const data = collectData();
 
     if (!data.studentName) {
@@ -538,17 +655,56 @@
     }
 
     const json = JSON.stringify(data);
-    // 한글 안전 base64
     const encoded = btoa(unescape(encodeURIComponent(json)));
     const param = encodeURIComponent(encoded);
 
     const REPORT_BASE_URL = 'https://skantdlv0-cloud.github.io/johyeont-report/report.html';
-    generatedUrl = `${REPORT_BASE_URL}?data=${param}`;
+    const longUrl = `${REPORT_BASE_URL}?data=${param}`;
+    originalUrlLength = longUrl.length;
 
-    document.getElementById('resultUrl').textContent = generatedUrl;
+    // UI: 로딩 표시
+    const btn = document.getElementById('generateBtn');
     const box = document.getElementById('resultBox');
+    const loadingBox = document.getElementById('loadingBox');
+    const resultContent = document.getElementById('resultContent');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ 링크 단축 중...';
     box.classList.add('show');
+    loadingBox.style.display = 'block';
+    resultContent.style.display = 'none';
     box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // 단축 시도
+    const shortened = await shortenUrl(longUrl);
+
+    loadingBox.style.display = 'none';
+    resultContent.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '🔗 학부모 발송 링크 생성';
+
+    const warnBox = document.getElementById('resultWarn');
+    const lengthBadge = document.getElementById('lengthBadge');
+    const originalLen = document.getElementById('originalLen');
+
+    if (shortened) {
+      generatedUrl = shortened;
+      warnBox.style.display = 'none';
+      const len = shortened.length;
+      lengthBadge.className = 'badge-ok';
+      lengthBadge.textContent = `링크 길이: ${len}자 ${len <= 50 ? '(카톡 썸네일 OK!)' : ''}`;
+      originalLen.textContent = `원본: ${originalUrlLength.toLocaleString()}자`;
+      showToast('✨ 짧은 링크 생성 완료!');
+    } else {
+      generatedUrl = longUrl;
+      warnBox.style.display = 'block';
+      lengthBadge.className = 'badge-warn';
+      lengthBadge.textContent = `링크 길이: ${longUrl.length.toLocaleString()}자 (긴 링크)`;
+      originalLen.textContent = '';
+      showToast('단축 실패, 원본 링크 사용');
+    }
+
+    document.getElementById('shortUrl').textContent = generatedUrl;
   }
 
   function copyLink() {
@@ -556,7 +712,6 @@
     navigator.clipboard.writeText(generatedUrl).then(() => {
       showToast('링크가 복사되었어요 💗');
     }).catch(() => {
-      // 폴백
       const ta = document.createElement('textarea');
       ta.value = generatedUrl;
       document.body.appendChild(ta);
