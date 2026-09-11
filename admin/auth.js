@@ -104,6 +104,11 @@
   /* ---------- 시작 ---------- */
 
   function boot() {
+    /* 지금 떠 있는 버전을 화면에 적는다.
+       배포했는데 화면이 그대로일 때, 옛 파일이 캐시로 남았는지 바로 알 수 있다. */
+    var verEl = $('#appVersion');
+    if (verEl) verEl.textContent = 'v' + (window.SB ? SB.VERSION : '?');
+
     try {
       SB.init();
     } catch (e) {

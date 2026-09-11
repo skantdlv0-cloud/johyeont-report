@@ -11,6 +11,10 @@
 (function (global) {
   'use strict';
 
+  /* 화면 아래에 표시된다. 배포 후 옛 파일이 캐시로 남았는지 눈으로 확인하는 용도.
+     index.html 의 ?v= 값과 같아야 한다. */
+  var APP_VERSION = '20260911e';
+
   var CONFIG = {
     url: 'https://usejvhhxmnwdnzyergpl.supabase.co',
     key: 'sb_publishable_6SVN7cGugPqwNXkFn46Zcw_a9FZG2Ts',
@@ -148,6 +152,7 @@
   }
 
   global.SB = {
+    VERSION: APP_VERSION,
     CONFIG: CONFIG,
     init: init,
     get client() { return init(); },

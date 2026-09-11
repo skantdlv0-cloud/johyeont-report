@@ -104,6 +104,13 @@ body.is-locked { overflow: hidden; }
   text-align: center;
 }
 .gate .modal__error { margin-top: 12px; }
+.gate__ver {
+  display: block;
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: #C5BBD2;
+}
 
 /* 상단 로그인 표시 */
 .whoami {
