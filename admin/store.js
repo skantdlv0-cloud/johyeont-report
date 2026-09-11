@@ -1,0 +1,348 @@
+/* ============================================================
+   store.js — 브라우저 저장소 · 암호 백업 · 한글 로마자 변환
+
+   중요: 명단과 토큰은 이 브라우저에만 있다.
+         저장소(GitHub)에는 절대 올라가지 않는다.
+   ============================================================ */
+
+(function (global) {
+  'use strict';
+
+  var SCHEMA_VERSION = 1;
+
+  var KEYS = {
+    students:  'jt.students',
+    draft:     'jt.draft',
+    published: 'jt.published',
+    snippets:  'jt.snippets',
+    sent:      'jt.sent',
+    token:     'jt.token',
+    settings:  'jt.settings'
+  };
+
+  /* ---------- localStorage 안전 래퍼 ----------
+     사생활 보호 모드나 저장 공간 초과 시 throw 되므로 전부 감싼다. */
+
+  function read(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw == null) return fallback;
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('읽기 실패:', key, e);
+      return fallback;
+    }
+  }
+
+  function write(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (e) {
+      console.error('저장 실패:', key, e);
+      return false;
+    }
+  }
+
+  function remove(key) {
+    try { localStorage.removeItem(key); return true; }
+    catch (e) { return false; }
+  }
+
+  /* ---------- 한글 → 로마자 (국어의 로마자 표기법) ----------
+     파일 이름에 쓸 값을 자동으로 제안한다. 사용자가 고칠 수 있다. */
+
+  var CHO = ['g','kk','n','d','tt','r','m','b','pp','s','ss','','j','jj','ch','k','t','p','h'];
+  var JUNG = ['a','ae','ya','yae','eo','e','yeo','ye','o','wa','wae','oe','yo',
+              'u','wo','we','wi','yu','eu','ui','i'];
+  /* 받침 28개 — 유니코드 순서 그대로여야 한다.
+     ''  ㄱ  ㄲ  ㄳ  ㄴ  ㄵ  ㄶ  ㄷ  ㄹ  ㄺ  ㄻ  ㄼ  ㄽ  ㄾ
+     ㄿ  ㅀ  ㅁ  ㅂ  ㅄ  ㅅ  ㅆ  ㅇ  ㅈ  ㅊ  ㅋ  ㅌ  ㅍ  ㅎ */
+  var JONG = ['', 'k', 'k', 'k', 'n', 'n', 'n', 't', 'l', 'k', 'm', 'l', 'l', 'l',
+              'p', 'l', 'm', 'p', 'p', 't', 't', 'ng', 't', 't', 'k', 't', 'p', 't'];
+
+  /* 두 글자 성씨 — 이름 부분만 뽑을 때 쓴다 */
+  var SURNAMES_2 = ['남궁','선우','황보','제갈','사공','서문','독고','동방',
+                    '망절','司空','어금','장곡','강전'];
+
+  function romanizeSyllable(ch) {
+    var code = ch.charCodeAt(0) - 0xAC00;
+    if (code < 0 || code > 11171) return /[a-zA-Z0-9]/.test(ch) ? ch.toLowerCase() : '';
+    var cho  = Math.floor(code / 588);
+    var jung = Math.floor((code % 588) / 28);
+    var jong = code % 28;
+    return CHO[cho] + JUNG[jung] + JONG[jong];
+  }
+
+  /* '김하늘' → 'haneul'  (성을 뺀 이름만) */
+  function romanizeGivenName(fullName) {
+    var name = String(fullName || '').replace(/\s+/g, '');
+    if (!name) return '';
+
+    var given = name;
+    var two = name.slice(0, 2);
+    if (SURNAMES_2.indexOf(two) !== -1) {
+      given = name.slice(2);
+    } else if (name.length > 1) {
+      given = name.slice(1);
+    }
+    if (!given) given = name;
+
+    var out = '';
+    for (var i = 0; i < given.length; i++) out += romanizeSyllable(given[i]);
+    return out.replace(/[^a-z0-9]/g, '');
+  }
+
+  /* ---------- 전화번호 ---------- */
+
+  function phoneDigits(v) {
+    return String(v || '').replace(/\D/g, '');
+  }
+
+  function phoneFormat(v) {
+    var d = phoneDigits(v);
+    if (!d) return '';
+    if (d.length === 11) return d.slice(0,3) + '-' + d.slice(3,7) + '-' + d.slice(7);
+    if (d.length === 10) {
+      if (d.slice(0,2) === '02') return d.slice(0,2) + '-' + d.slice(2,6) + '-' + d.slice(6);
+      return d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6);
+    }
+    return d;
+  }
+
+  function phoneValid(v) {
+    var d = phoneDigits(v);
+    return d === '' || (d.length >= 9 && d.length <= 11);
+  }
+
+  /* 인사말에 쓸 호칭. 비어 있으면 '어머님'. */
+  function parentTitleOf(s) {
+    return (s && String(s.parentTitle || '').trim()) || '어머님';
+  }
+
+  /* 문자 보낼 수 있는 번호 목록 — E단계에서 고를 때 쓴다 */
+  function phonesOf(s) {
+    var out = [];
+    if (s && s.parentPhone)  out.push({ label: parentTitleOf(s), number: s.parentPhone });
+    if (s && s.parentPhone2) out.push({ label: '연락처 2',        number: s.parentPhone2 });
+    return out;
+  }
+
+  /* ---------- 학생 명단 ---------- */
+
+  function newId() {
+    var a = new Uint8Array(5);
+    crypto.getRandomValues(a);
+    return 's_' + Array.from(a).map(function (b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  function getStudents() {
+    var list = read(KEYS.students, []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  function saveStudents(list) {
+    return write(KEYS.students, list);
+  }
+
+  function upsertStudent(s) {
+    var list = getStudents();
+    var i = list.findIndex(function (x) { return x.id === s.id; });
+    if (i >= 0) list[i] = s; else list.push(s);
+    saveStudents(list);
+    return s;
+  }
+
+  function deleteStudent(id) {
+    saveStudents(getStudents().filter(function (x) { return x.id !== id; }));
+  }
+
+  /* 반 목록 — 등장 순서를 유지하되 이름순으로 정렬 */
+  function getClasses() {
+    var seen = {};
+    getStudents().forEach(function (s) {
+      var c = (s.className || '').trim();
+      if (c) seen[c] = (seen[c] || 0) + 1;
+    });
+    return Object.keys(seen).sort(function (a, b) {
+      return a.localeCompare(b, 'ko');
+    }).map(function (name) {
+      return { name: name, count: seen[name] };
+    });
+  }
+
+  /* ---------- 암호 백업 (PBKDF2 + AES-GCM) ----------
+     브라우저 내장 Web Crypto 만 쓴다. 외부 라이브러리 없음.
+     암호를 잊으면 복구할 방법이 없다. */
+
+  var PBKDF2_ITER = 250000;
+
+  function b64(buf) {
+    var bytes = new Uint8Array(buf), s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+
+  function unb64(str) {
+    var s = atob(str), a = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+    return a;
+  }
+
+  function deriveKey(password, salt) {
+    var enc = new TextEncoder();
+    return crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+      .then(function (baseKey) {
+        return crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: salt, iterations: PBKDF2_ITER, hash: 'SHA-256' },
+          baseKey,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt', 'decrypt']
+        );
+      });
+  }
+
+  /* 기기 이전용 전체 백업을 암호로 잠근다.
+
+     담는 것 : 명단 · 설정 · 발송 기록 · 발행 이력 · 코멘트 상용구
+     빼는 것 : 깃허브 토큰
+       토큰은 기기마다 따로 발급하고 따로 폐기하는 물건이다.
+       파일에 담아 옮기면 폐기해도 파일에 남아 위험해진다. */
+  function exportEncrypted(password) {
+    var payload = {
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      students:  getStudents(),
+      settings:  read(KEYS.settings, {}),
+      sent:      read(KEYS.sent, {}),
+      published: read(KEYS.published, {}),
+      snippets:  read(KEYS.snippets, [])
+    };
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    var iv   = crypto.getRandomValues(new Uint8Array(12));
+
+    return deriveKey(password, salt).then(function (key) {
+      var enc = new TextEncoder();
+      return crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        enc.encode(JSON.stringify(payload))
+      );
+    }).then(function (cipherBuf) {
+      return {
+        app: 'johyeont-report-admin',
+        type: 'device-backup',
+        contains: {
+          students:  payload.students.length,
+          sentWeeks: Object.keys(payload.sent).length,
+          published: Object.keys(payload.published).length
+        },
+        version: SCHEMA_VERSION,
+        encrypted: true,
+        kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: PBKDF2_ITER, salt: b64(salt) },
+        cipher: { name: 'AES-GCM', iv: b64(iv) },
+        data: b64(cipherBuf)
+      };
+    });
+  }
+
+  /* 백업 파일을 풀어 payload 를 돌려준다.
+     { students, settings, sent, published, snippets } */
+  function importEncrypted(fileObj, password) {
+    return Promise.resolve().then(function () {
+      var TYPES = ['device-backup', 'students-backup'];   /* 뒤는 예전 형식 */
+      if (!fileObj || TYPES.indexOf(fileObj.type) === -1) {
+        throw new Error('이 파일은 백업 파일이 아닙니다.');
+      }
+
+      function normalize(payload) {
+        if (!Array.isArray(payload.students)) throw new Error('명단이 들어 있지 않습니다.');
+        return {
+          students:  payload.students,
+          settings:  payload.settings  || {},
+          sent:      payload.sent      || {},
+          published: payload.published || {},
+          snippets:  payload.snippets  || []
+        };
+      }
+
+      if (!fileObj.encrypted) {
+        /* 암호 없이 내보낸 파일도 받아준다 */
+        return normalize(fileObj);
+      }
+
+      var salt = unb64(fileObj.kdf.salt);
+      var iv   = unb64(fileObj.cipher.iv);
+      var data = unb64(fileObj.data);
+
+      return deriveKey(password, salt).then(function (key) {
+        return crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, data);
+      }).then(function (plainBuf) {
+        return normalize(JSON.parse(new TextDecoder().decode(plainBuf)));
+      }).catch(function (e) {
+        /* AES-GCM 은 암호가 틀리면 복호화 단계에서 바로 실패한다 */
+        if (e instanceof Error && e.message.indexOf('명단') === 0) throw e;
+        throw new Error('암호가 맞지 않거나 파일이 손상되었습니다.');
+      });
+    });
+  }
+
+  /* 백업에서 읽은 내용을 이 기기에 복원한다 */
+  function restorePayload(p) {
+    saveStudents(p.students || []);
+    write(KEYS.settings,  p.settings  || {});
+    write(KEYS.sent,      p.sent      || {});
+    write(KEYS.published, p.published || {});
+    write(KEYS.snippets,  p.snippets  || []);
+  }
+
+  /* ---------- 토큰 ---------- */
+
+  function getToken()      { return read(KEYS.token, null); }
+  function saveToken(obj)  { return write(KEYS.token, obj); }
+  function clearToken()    { return remove(KEYS.token); }
+
+  /* ---------- 전체 지우기 ---------- */
+
+  function clearAll() {
+    Object.keys(KEYS).forEach(function (k) { remove(KEYS[k]); });
+  }
+
+  function clearStudentsOnly() {
+    remove(KEYS.students);
+  }
+
+  /* ---------- 내보내기 ---------- */
+
+  global.Store = {
+    SCHEMA_VERSION: SCHEMA_VERSION,
+    KEYS: KEYS,
+
+    read: read, write: write, remove: remove,
+
+    newId: newId,
+    getStudents: getStudents,
+    saveStudents: saveStudents,
+    upsertStudent: upsertStudent,
+    deleteStudent: deleteStudent,
+    getClasses: getClasses,
+
+    romanizeGivenName: romanizeGivenName,
+    phoneDigits: phoneDigits,
+    phoneFormat: phoneFormat,
+    phoneValid: phoneValid,
+    parentTitleOf: parentTitleOf,
+    phonesOf: phonesOf,
+
+    exportEncrypted: exportEncrypted,
+    importEncrypted: importEncrypted,
+    restorePayload: restorePayload,
+
+    getToken: getToken, saveToken: saveToken, clearToken: clearToken,
+    clearAll: clearAll, clearStudentsOnly: clearStudentsOnly
+  };
+
+})(window);

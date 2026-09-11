@@ -1,0 +1,734 @@
+/* ============================================================
+   app.js — 화면 제어 (A단계: 명단 탭)
+
+   100명까지 느려지지 않도록 지킨 것
+     · 목록은 DocumentFragment 로 한 번에 붙인다
+     · 행마다 리스너를 달지 않고 이벤트 위임을 쓴다
+     · 검색은 입력할 때마다 다시 그리지 않고 0.15초 묶어서 처리한다
+     · 학생 1명이 바뀌면 그 행만 다시 그린다
+   ============================================================ */
+
+(function () {
+  'use strict';
+
+  var $  = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+  /* ---------- 토스트 ---------- */
+
+  var toastHost = $('#toastHost');
+
+  function toast(msg, kind) {
+    var el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' toast--' + kind : '');
+    el.textContent = msg;
+    toastHost.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = 'opacity .2s';
+      el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 220);
+    }, 2400);
+  }
+
+  /* ---------- 확인 모달 ---------- */
+
+  var confirmModal = $('#confirmModal');
+
+  function confirmAsk(title, desc, okLabel) {
+    return new Promise(function (resolve) {
+      $('#confirmTitle').textContent = title;
+      $('#confirmDesc').textContent = desc;
+      $('#btnConfirmYes').textContent = okLabel || '삭제';
+
+      function cleanup(result) {
+        $('#btnConfirmYes').removeEventListener('click', onYes);
+        $('#btnConfirmNo').removeEventListener('click', onNo);
+        confirmModal.close();
+        resolve(result);
+      }
+      function onYes() { cleanup(true); }
+      function onNo()  { cleanup(false); }
+
+      $('#btnConfirmYes').addEventListener('click', onYes);
+      $('#btnConfirmNo').addEventListener('click', onNo);
+      confirmModal.showModal();
+    });
+  }
+
+  /* ============================================================
+     탭
+     ============================================================ */
+
+  var TABS = [
+    { tab: '#tab-roster',  panel: '#panel-roster'  },
+    { tab: '#tab-write',   panel: '#panel-write'   },
+    { tab: '#tab-publish', panel: '#panel-publish' }
+  ];
+
+  function selectTab(idx) {
+    TABS.forEach(function (t, i) {
+      var on = i === idx;
+      $(t.tab).setAttribute('aria-selected', on ? 'true' : 'false');
+      $(t.panel).hidden = !on;
+    });
+  }
+
+  TABS.forEach(function (t, i) {
+    $(t.tab).addEventListener('click', function () { selectTab(i); });
+  });
+
+  /* ============================================================
+     공용 PC 안내 — 닫으면 기억한다
+     ============================================================ */
+
+  var settings = Store.read(Store.KEYS.settings, {});
+  var pcNotice = $('#publicPcNotice');
+
+  if (!settings.hidePublicPcNotice) pcNotice.hidden = false;
+
+  $('#publicPcClose').addEventListener('click', function () {
+    pcNotice.hidden = true;
+    settings.hidePublicPcNotice = true;
+    Store.write(Store.KEYS.settings, settings);
+  });
+
+  /* ============================================================
+     명단 — 상태
+     ============================================================ */
+
+  var students = Store.getStudents();
+  var collapsed = {};                 /* 반별 접힘 상태 */
+  var filterText = '';
+  var filterClass = '';
+
+  var rosterList = $('#rosterList');
+
+  function sortStudents(list) {
+    return list.slice().sort(function (a, b) {
+      var c = (a.className || '￿').localeCompare(b.className || '￿', 'ko');
+      if (c !== 0) return c;
+      return (a.name || '').localeCompare(b.name || '', 'ko');
+    });
+  }
+
+  function matches(s) {
+    if (filterClass && (s.className || '') !== filterClass) return false;
+    if (!filterText) return true;
+    var hay = [s.name, s.slug, s.school, s.grade, s.className].join(' ').toLowerCase();
+    return hay.indexOf(filterText) !== -1;
+  }
+
+  /* ---------- 행 하나 ---------- */
+
+  /* 연락처 칸 — 호칭 + 번호 두 줄까지 */
+  function phoneCellHtml(s) {
+    var lines = [];
+    if (s.parentPhone)  lines.push({ title: s.parentTitle || '', num: s.parentPhone });
+    if (s.parentPhone2) lines.push({ title: lines.length ? '' : (s.parentTitle || ''), num: s.parentPhone2 });
+
+    if (!lines.length) return '<span class="roster__phone is-empty">없음</span>';
+
+    return '<span class="phone-lines">' + lines.map(function (l) {
+      return '<span class="phone-line">' +
+               (l.title ? '<span class="phone-line__title"></span>' : '') +
+               '<span class="phone-line__num"></span>' +
+             '</span>';
+    }).join('') + '</span>';
+  }
+
+  function fillPhoneCell(td, s) {
+    var lines = [];
+    if (s.parentPhone)  lines.push({ title: s.parentTitle || '', num: s.parentPhone });
+    if (s.parentPhone2) lines.push({ title: lines.length ? '' : (s.parentTitle || ''), num: s.parentPhone2 });
+
+    var nodes = td.querySelectorAll('.phone-line');
+    lines.forEach(function (l, i) {
+      var n = nodes[i];
+      if (!n) return;
+      var t = n.querySelector('.phone-line__title');
+      if (t) t.textContent = l.title;
+      n.querySelector('.phone-line__num').textContent = Store.phoneFormat(l.num);
+    });
+  }
+
+  function rowHtml(s) {
+    return '' +
+      '<td data-label="이름"><span class="roster__name"></span></td>' +
+      '<td data-label="로마자"><span class="roster__slug"></span></td>' +
+      '<td data-label="학교"></td>' +
+      '<td data-label="학년"></td>' +
+      '<td data-label="연락처">' + phoneCellHtml(s) + '</td>' +
+      '<td class="roster__actions">' +
+        '<button class="btn btn--sm" data-act="edit">수정</button>' +
+        '<button class="btn btn--sm btn--danger" data-act="del">삭제</button>' +
+      '</td>';
+  }
+
+  /* textContent 로 넣어 이름·학교에 든 특수문자를 그대로 안전하게 표시한다 */
+  function fillRow(tr, s) {
+    tr.dataset.id = s.id;
+    tr.innerHTML = rowHtml(s);
+    var tds = tr.children;
+    tds[0].querySelector('.roster__name').textContent = s.name || '';
+    tds[1].querySelector('.roster__slug').textContent = s.slug || '';
+    tds[2].textContent = s.school || '-';
+    tds[3].textContent = s.grade || '-';
+    /* 모바일 라벨은 CSS ::before 가 data-label 로 그린다 */
+    tds[2].setAttribute('data-label', '학교');
+    tds[3].setAttribute('data-label', '학년');
+    fillPhoneCell(tds[4], s);
+  }
+
+  /* ---------- 전체 그리기 ---------- */
+
+  function render() {
+    var visible = sortStudents(students).filter(matches);
+
+    $('#brandCount').textContent = '학생 ' + students.length + '명';
+    $('#rosterHint').textContent = students.length
+      ? (filterText || filterClass ? visible.length + '명 표시 중 · 이 브라우저에만 저장됩니다'
+                                   : '이 브라우저에만 저장됩니다')
+      : '이 브라우저에만 저장됩니다';
+
+    rosterList.textContent = '';
+
+    if (!students.length) {
+      rosterList.innerHTML =
+        '<div class="empty-state">아직 등록된 학생이 없습니다.<br>' +
+        '<b>+ 학생 추가</b>를 눌러 시작하거나, 아래에서 백업 파일을 불러오세요.</div>';
+      refreshClassOptions();
+      return;
+    }
+    if (!visible.length) {
+      rosterList.innerHTML = '<div class="empty-state">조건에 맞는 학생이 없습니다.</div>';
+      refreshClassOptions();
+      return;
+    }
+
+    /* 반별로 묶는다 */
+    var groups = [];
+    var index = {};
+    visible.forEach(function (s) {
+      var key = (s.className || '').trim() || '(반 없음)';
+      if (!(key in index)) { index[key] = groups.length; groups.push({ name: key, rows: [] }); }
+      groups[index[key]].rows.push(s);
+    });
+
+    var frag = document.createDocumentFragment();
+
+    /* 검색·필터 중에는 접힘을 무시한다. 접힌 반에 결과가 숨으면 안 된다. */
+    var forceExpand = !!(filterText || filterClass);
+
+    groups.forEach(function (g) {
+      var wrap = document.createElement('div');
+      wrap.className = 'class-group' +
+        (!forceExpand && collapsed[g.name] ? ' is-collapsed' : '');
+      wrap.dataset.cls = g.name;
+
+      var head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'class-head';
+      head.dataset.act = 'toggle';
+      head.innerHTML =
+        '<span class="class-head__name"></span>' +
+        '<span class="class-head__count">' + g.rows.length + '명</span>' +
+        '<span class="class-head__caret" aria-hidden="true">▾</span>';
+      head.querySelector('.class-head__name').textContent = g.name;
+      wrap.appendChild(head);
+
+      var table = document.createElement('table');
+      table.className = 'roster';
+      table.innerHTML =
+        '<thead><tr>' +
+          '<th>이름</th><th>로마자</th><th>학교</th><th>학년</th><th>연락처</th><th></th>' +
+        '</tr></thead><tbody></tbody>';
+
+      var tbody = table.querySelector('tbody');
+      g.rows.forEach(function (s) {
+        var tr = document.createElement('tr');
+        fillRow(tr, s);
+        tbody.appendChild(tr);
+      });
+
+      wrap.appendChild(table);
+      frag.appendChild(wrap);
+    });
+
+    rosterList.appendChild(frag);
+    refreshClassOptions();
+    syncExpandButton();
+  }
+
+  /* 학생이 많으면 반별로 접은 채 시작한다. 100명이 한꺼번에 펼쳐지면 화면이 너무 길어진다. */
+  function collapseIfCrowded() {
+    if (students.length <= 30) return;
+    Store.getClasses().forEach(function (c) { collapsed[c.name] = true; });
+    collapsed['(반 없음)'] = true;
+  }
+
+  /* 반 목록을 필터 드롭다운과 모달 datalist 에 반영 */
+  function refreshClassOptions() {
+    var classes = Store.getClasses();
+
+    var sel = $('#classFilter');
+    var keep = sel.value;
+    sel.textContent = '';
+    var optAll = document.createElement('option');
+    optAll.value = ''; optAll.textContent = '전체 반';
+    sel.appendChild(optAll);
+    classes.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.name;
+      o.textContent = c.name + ' (' + c.count + ')';
+      sel.appendChild(o);
+    });
+    sel.value = classes.some(function (c) { return c.name === keep; }) ? keep : '';
+
+    var dl = $('#classOptions');
+    dl.textContent = '';
+    classes.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.name;
+      dl.appendChild(o);
+    });
+  }
+
+  /* ---------- 이벤트 위임 ---------- */
+
+  rosterList.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+
+    if (btn.dataset.act === 'toggle') {
+      var g = btn.closest('.class-group');
+      var name = g.dataset.cls;
+      collapsed[name] = !collapsed[name];
+      g.classList.toggle('is-collapsed', !!collapsed[name]);
+      return;
+    }
+
+    var tr = btn.closest('tr');
+    if (!tr) return;
+    var s = students.find(function (x) { return x.id === tr.dataset.id; });
+    if (!s) return;
+
+    if (btn.dataset.act === 'edit') openStudentModal(s);
+    if (btn.dataset.act === 'del')  removeStudent(s);
+  });
+
+  function removeStudent(s) {
+    confirmAsk('학생 삭제', '‘' + s.name + '’ 학생을 명단에서 지웁니다. 되돌릴 수 없습니다.', '삭제')
+      .then(function (ok) {
+        if (!ok) return;
+        Store.deleteStudent(s.id);
+        students = Store.getStudents();
+        render();
+        toast(s.name + ' 학생을 지웠습니다');
+      });
+  }
+
+  /* ---------- 검색 · 필터 ---------- */
+
+  var searchTimer = null;
+  $('#searchInput').addEventListener('input', function (e) {
+    var v = e.target.value.trim().toLowerCase();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      filterText = v;
+      render();
+    }, 150);
+  });
+
+  $('#classFilter').addEventListener('change', function (e) {
+    filterClass = e.target.value;
+    render();
+  });
+
+  /* 화면에 보이는 반이 하나라도 접혀 있으면 '펼치기', 아니면 '접기' 로 동작한다 */
+  function visibleClassNames() {
+    return $$('.class-group', rosterList).map(function (g) { return g.dataset.cls; });
+  }
+
+  function syncExpandButton() {
+    var names = visibleClassNames();
+    var anyCollapsed = names.some(function (n) { return collapsed[n]; });
+    var btn = $('#btnExpandAll');
+    btn.textContent = anyCollapsed ? '모두 펼치기' : '모두 접기';
+    /* 검색 중에는 강제로 펼쳐 두므로 버튼을 감춘다 */
+    btn.hidden = names.length < 2 || !!(filterText || filterClass);
+  }
+
+  $('#btnExpandAll').addEventListener('click', function () {
+    var names = visibleClassNames();
+    var anyCollapsed = names.some(function (n) { return collapsed[n]; });
+    names.forEach(function (n) { collapsed[n] = !anyCollapsed; });
+    render();
+  });
+
+  /* ============================================================
+     학생 추가 · 수정 모달
+     ============================================================ */
+
+  var studentModal = $('#studentModal');
+  var editingId = null;
+  var slugTouched = false;
+
+  function showStudentError(msg) {
+    var box = $('#studentError');
+    box.textContent = msg || '';
+    box.classList.toggle('is-on', !!msg);
+  }
+
+  function openStudentModal(s) {
+    editingId = s ? s.id : null;
+    slugTouched = !!s;
+
+    $('#studentModalTitle').textContent = s ? '학생 수정' : '학생 추가';
+    $('#fName').value   = s ? (s.name || '')        : '';
+    $('#fSlug').value   = s ? (s.slug || '')        : '';
+    $('#fSchool').value = s ? (s.school || '')      : '';
+    $('#fGrade').value  = s ? (s.grade || '')       : '';
+    $('#fClass').value  = s ? (s.className || '')   : '';
+    $('#fParentTitle').value = s ? (s.parentTitle || '') : '';
+    $('#fPhone').value  = s && s.parentPhone  ? Store.phoneFormat(s.parentPhone)  : '';
+    $('#fPhone2').value = s && s.parentPhone2 ? Store.phoneFormat(s.parentPhone2) : '';
+
+    /* 새 학생이면 직전에 쓰던 학년·반을 미리 채워 연속 입력을 빠르게 한다 */
+    if (!s) {
+      $('#fGrade').value = settings.lastGrade || '';
+      $('#fClass').value = settings.lastClass || '';
+      $('#fSchool').value = settings.lastSchool || '';
+      $('#fParentTitle').value = settings.lastParentTitle || '';
+    }
+
+    showStudentError('');
+    studentModal.showModal();
+    setTimeout(function () { $('#fName').focus(); }, 30);
+  }
+
+  $('#btnAddStudent').addEventListener('click', function () { openStudentModal(null); });
+  $('#btnStudentCancel').addEventListener('click', function () { studentModal.close(); });
+
+  /* 이름을 치면 로마자를 자동 제안한다. 사용자가 직접 고친 뒤에는 건드리지 않는다. */
+  $('#fName').addEventListener('input', function (e) {
+    if (slugTouched) return;
+    $('#fSlug').value = Store.romanizeGivenName(e.target.value);
+  });
+  $('#fSlug').addEventListener('input', function () { slugTouched = true; });
+
+  ['#fPhone', '#fPhone2'].forEach(function (sel) {
+    $(sel).addEventListener('blur', function (e) {
+      var d = Store.phoneDigits(e.target.value);
+      if (d) e.target.value = Store.phoneFormat(d);
+    });
+  });
+
+  $('#studentForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    var name   = $('#fName').value.trim();
+    var slug   = $('#fSlug').value.trim().toLowerCase();
+    var phone  = Store.phoneDigits($('#fPhone').value);
+    var phone2 = Store.phoneDigits($('#fPhone2').value);
+
+    if (!name) { showStudentError('이름을 입력해 주세요.'); return; }
+    if (!slug) { showStudentError('파일명에 쓸 로마자를 입력해 주세요.'); return; }
+    if (!/^[a-z0-9]+$/.test(slug)) {
+      showStudentError('로마자는 영어 소문자와 숫자만 쓸 수 있습니다. (예: haneul)');
+      return;
+    }
+    if (!Store.phoneValid(phone)) {
+      showStudentError('연락처 1의 자릿수를 확인해 주세요.');
+      return;
+    }
+    if (!Store.phoneValid(phone2)) {
+      showStudentError('연락처 2의 자릿수를 확인해 주세요.');
+      return;
+    }
+    if (phone2 && phone2 === phone) {
+      showStudentError('연락처 1과 2가 같습니다. 다른 번호를 넣거나 연락처 2를 비워 주세요.');
+      return;
+    }
+    if (phone2 && !phone) {
+      /* 1번이 비고 2번만 있으면 번호를 1번으로 올린다 */
+      phone = phone2;
+      phone2 = '';
+    }
+
+    /* 로마자가 겹치면 링크가 헷갈리므로 미리 막는다 */
+    var dup = students.find(function (x) {
+      return x.slug === slug && x.id !== editingId;
+    });
+    if (dup) {
+      showStudentError('로마자 ‘' + slug + '’ 은(는) ' + dup.name + ' 학생이 쓰고 있습니다. 다르게 적어 주세요. (예: ' + slug + '2)');
+      return;
+    }
+
+    var rec = {
+      id: editingId || Store.newId(),
+      name: name,
+      slug: slug,
+      school: $('#fSchool').value.trim(),
+      grade: $('#fGrade').value.trim(),
+      className: $('#fClass').value.trim(),
+      parentTitle: $('#fParentTitle').value.trim(),
+      parentPhone: phone,
+      parentPhone2: phone2,
+      createdAt: editingId
+        ? (students.find(function (x) { return x.id === editingId; }) || {}).createdAt || Date.now()
+        : Date.now()
+    };
+
+    Store.upsertStudent(rec);
+    students = Store.getStudents();
+
+    /* 다음 학생 입력을 빠르게 하려고 마지막 값을 기억해 둔다 */
+    settings.lastGrade       = rec.grade;
+    settings.lastClass       = rec.className;
+    settings.lastSchool      = rec.school;
+    settings.lastParentTitle = rec.parentTitle;
+    Store.write(Store.KEYS.settings, settings);
+
+    studentModal.close();
+    render();
+    toast(editingId ? rec.name + ' 학생을 수정했습니다' : rec.name + ' 학생을 추가했습니다', 'good');
+  });
+
+  /* ============================================================
+     백업 암호 모달
+     ============================================================ */
+
+  var passModal = $('#passModal');
+  var passResolve = null;
+
+  function askPassword(mode) {
+    /* mode: 'export' | 'import' */
+    return new Promise(function (resolve) {
+      passResolve = resolve;
+
+      var isExport = mode === 'export';
+      $('#passTitle').textContent = isExport ? '백업 암호 정하기' : '백업 암호 입력';
+      $('#passDesc').textContent = isExport
+        ? '이 암호로 파일을 잠급니다. 조교에게는 파일과 암호를 따로 전달하세요.'
+        : '이 백업 파일을 잠글 때 쓴 암호를 넣어 주세요.';
+      $('#passConfirmField').hidden = !isExport;
+      $('#passWarn').hidden = !isExport;
+      $('#fPass1').value = '';
+      $('#fPass2').value = '';
+      $('#fPass1').setAttribute('autocomplete', isExport ? 'new-password' : 'current-password');
+      $('#passError').classList.remove('is-on');
+
+      passModal.showModal();
+      setTimeout(function () { $('#fPass1').focus(); }, 30);
+    });
+  }
+
+  function passFinish(value) {
+    if (!passResolve) return;
+    var r = passResolve;
+    passResolve = null;
+    passModal.close();
+    r(value);
+  }
+
+  $('#btnPassCancel').addEventListener('click', function () { passFinish(null); });
+
+  passModal.addEventListener('cancel', function () { passFinish(null); });
+
+  $('#passForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var p1 = $('#fPass1').value;
+    var p2 = $('#fPass2').value;
+    var isExport = !$('#passConfirmField').hidden;
+    var err = $('#passError');
+
+    if (p1.length < 4) {
+      err.textContent = '암호는 4자 이상으로 정해 주세요.';
+      err.classList.add('is-on');
+      return;
+    }
+    if (isExport && p1 !== p2) {
+      err.textContent = '두 암호가 서로 다릅니다. 다시 확인해 주세요.';
+      err.classList.add('is-on');
+      return;
+    }
+    passFinish(p1);
+  });
+
+  /* ============================================================
+     내보내기
+     ============================================================ */
+
+  $('#btnExport').addEventListener('click', function () {
+    if (!students.length) { toast('내보낼 학생이 없습니다', 'bad'); return; }
+
+    askPassword('export').then(function (pass) {
+      if (!pass) return;
+      return Store.exportEncrypted(pass).then(function (backup) {
+        var blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        var d = new Date();
+        var stamp = d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+        a.href = url;
+        a.download = 'johyeont-students-' + stamp + '.jtbak';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        toast(students.length + '명을 암호 백업으로 내려받았습니다', 'good');
+      });
+    }).catch(function (e) {
+      console.error(e);
+      toast('백업을 만들지 못했습니다', 'bad');
+    });
+  });
+
+  /* ============================================================
+     불러오기 — 버튼 · 파일 선택 · 드래그
+     ============================================================ */
+
+  var fileInput = $('#importFile');
+  var dropzone = $('#dropzone');
+
+  $('#btnImport').addEventListener('click', function () { fileInput.click(); });
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  dropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      dropzone.classList.add('is-over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      dropzone.classList.remove('is-over');
+    });
+  });
+  dropzone.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleImportFile(f);
+  });
+
+  fileInput.addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (f) handleImportFile(f);
+    e.target.value = '';           /* 같은 파일을 다시 골라도 동작하게 */
+  });
+
+  function handleImportFile(file) {
+    file.text().then(function (text) {
+      var obj;
+      try { obj = JSON.parse(text); }
+      catch (e) { throw new Error('JSON 형식이 아닙니다. 올바른 백업 파일인지 확인해 주세요.'); }
+
+      if (!obj || ['device-backup', 'students-backup'].indexOf(obj.type) === -1) {
+        throw new Error('백업 파일이 아닙니다.');
+      }
+
+      var needPass = !!obj.encrypted;
+      return (needPass ? askPassword('import') : Promise.resolve(''))
+        .then(function (pass) {
+          if (needPass && pass == null) return null;       /* 취소 */
+          return Store.importEncrypted(obj, pass);
+        });
+    }).then(function (payload) {
+      if (!payload) return;
+      return applyBackup(payload);
+    }).catch(function (e) {
+      console.error(e);
+      toast(e.message || '불러오지 못했습니다', 'bad');
+    });
+  }
+
+  /* 백업을 이 기기에 반영한다. 기존 내용이 있으면 먼저 묻는다. */
+  function applyBackup(payload) {
+    var n = payload.students.length;
+    var weeks = Object.keys(payload.sent || {}).length;
+
+    function apply() {
+      Store.restorePayload(payload);
+      students = Store.getStudents();
+      settings = Store.read(Store.KEYS.settings, {});
+      collapsed = {};
+      filterText = '';
+      filterClass = '';
+      $('#searchInput').value = '';
+      collapseIfCrowded();
+      render();
+      toast('학생 ' + n + '명' + (weeks ? ' · 발송 기록 ' + weeks + '주차' : '') + ' 불러왔습니다', 'good');
+    }
+
+    if (!students.length) { apply(); return; }
+
+    return confirmAsk(
+      '백업 불러오기',
+      '지금 이 기기에 학생 ' + students.length + '명이 저장되어 있습니다. ' +
+      '백업에 든 ' + n + '명으로 바꿀까요? 지금 내용(발송 기록 포함)은 사라집니다.',
+      '바꾸기'
+    ).then(function (ok) { if (ok) apply(); });
+  }
+
+  /* ============================================================
+     명단 지우기
+     ============================================================ */
+
+  $('#btnClearStudents').addEventListener('click', function () {
+    if (!students.length) { toast('지울 명단이 없습니다'); return; }
+
+    confirmAsk(
+      '명단 지우기',
+      '학생 ' + students.length + '명을 이 브라우저에서 모두 지웁니다. 되돌릴 수 없습니다. ' +
+      '백업을 먼저 내려받으셨나요?',
+      '모두 지우기'
+    ).then(function (ok) {
+      if (!ok) return;
+      Store.clearStudentsOnly();
+      students = [];
+      collapsed = {};
+      render();
+      toast('명단을 지웠습니다');
+    });
+  });
+
+  /* ---------- 이 기기에서 모든 정보 지우기 ---------- */
+
+  $('#btnClearAll').addEventListener('click', function () {
+    var hasToken = !!Store.getToken();
+
+    confirmAsk(
+      '이 기기에서 모든 정보 지우기',
+      '학생 명단(' + students.length + '명)과 학부모 연락처, ' +
+      (hasToken ? '깃허브 토큰, ' : '') +
+      '작성 중인 내용, 발송 기록을 이 브라우저에서 전부 지웁니다. ' +
+      '되돌릴 수 없습니다. 백업을 먼저 내려받으셨나요?',
+      '전부 지우기'
+    ).then(function (ok) {
+      if (!ok) return;
+      Store.clearAll();
+      students = [];
+      settings = {};
+      collapsed = {};
+      filterText = '';
+      filterClass = '';
+      $('#searchInput').value = '';
+      pcNotice.hidden = false;          /* 안내도 처음 상태로 되돌린다 */
+      render();
+      toast('이 기기의 정보를 모두 지웠습니다', 'good');
+    });
+  });
+
+  /* ============================================================
+     시작
+     ============================================================ */
+
+  collapseIfCrowded();
+  render();
+
+})();

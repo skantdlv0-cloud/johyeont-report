@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>조현T 주간 레포트 생성기</title>
+
+<!-- 교사·조교 전용 도구. 검색에 노출되지 않게 한다. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#FFF5F8">
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" as="style" crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <div class="brand">
+      <span class="brand__dot" aria-hidden="true"></span>
+      조현T 주간 레포트 생성기
+      <span class="brand__sub" id="brandCount">학생 0명</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="작업 단계">
+      <button class="tab" role="tab" id="tab-roster"  aria-controls="panel-roster"  aria-selected="true">
+        <span class="tab__num">1</span>명단
+      </button>
+      <button class="tab" role="tab" id="tab-write"   aria-controls="panel-write"   aria-selected="false">
+        <span class="tab__num">2</span>작성
+      </button>
+      <button class="tab" role="tab" id="tab-publish" aria-controls="panel-publish" aria-selected="false">
+        <span class="tab__num">3</span>발행
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============================================================
+       공용 안내 — 공용 PC 경고
+       ============================================================ -->
+  <div class="notice notice--warn" id="publicPcNotice" hidden>
+    <span class="notice__icon" aria-hidden="true">⚠️</span>
+    <div class="notice__body">
+      <b>공용 PC에서는 사용하지 마세요.</b>
+      학생 명단과 학부모 연락처, 깃허브 토큰이 이 브라우저에 저장됩니다.
+      본인 노트북에서만 쓰시고, 남의 컴퓨터에서 열었다면
+      ③ 발행 탭의 <b>[명단 지우기]</b>·<b>[토큰 지우기]</b>로 반드시 지워 주세요.
+    </div>
+    <button class="notice__close" id="publicPcClose" type="button" aria-label="닫기">×</button>
+  </div>
+
+  <!-- ============================================================
+       ① 명단
+       ============================================================ -->
+  <section id="panel-roster" role="tabpanel" aria-labelledby="tab-roster">
+
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">학생 명단</h2>
+        <p class="panel__hint" id="rosterHint">이 브라우저에만 저장됩니다</p>
+        <div class="spacer"></div>
+        <button class="btn btn--primary" id="btnAddStudent" type="button">+ 학생 추가</button>
+      </div>
+
+      <div class="toolbar">
+        <div class="search">
+          <span class="search__icon" aria-hidden="true">🔍</span>
+          <input class="input" id="searchInput" type="search" placeholder="이름·학교·반 검색"
+                 autocomplete="off" aria-label="학생 검색">
+        </div>
+        <select class="select" id="classFilter" aria-label="반 필터">
+          <option value="">전체 반</option>
+        </select>
+        <button class="btn btn--sm" id="btnExpandAll" type="button">모두 펼치기</button>
+      </div>
+
+      <div id="rosterList" aria-live="polite"></div>
+    </div>
+
+    <!-- 백업 -->
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">기기 이전 백업</h2>
+        <p class="panel__hint">노트북·조교가 바뀌거나, 폰에서 이어서 쓸 때</p>
+      </div>
+
+      <div class="toolbar" style="margin-bottom:14px">
+        <button class="btn" id="btnExport" type="button">🔒 암호 백업 내려받기</button>
+        <button class="btn" id="btnImport" type="button">📂 백업 불러오기</button>
+        <input type="file" id="importFile" accept=".jtbak,.json,application/json" hidden>
+      </div>
+
+      <div class="dropzone" id="dropzone" tabindex="0" role="button">
+        백업 파일을 여기에 <b>끌어다 놓으세요</b><br>
+        또는 눌러서 파일을 고르세요 &nbsp;·&nbsp; <code>.jtbak</code>
+      </div>
+
+      <div class="notice notice--info">
+        <span class="notice__icon" aria-hidden="true">📦</span>
+        <div class="notice__body">
+          백업에 담기는 것 — <b>학생 명단 · 설정 · 발송 기록 · 발행 이력 · 코멘트 상용구</b><br>
+          담기지 <b>않는</b> 것 — <b>깃허브 토큰</b>.
+          토큰은 기기마다 따로 발급하고 따로 폐기하는 것이라, 파일에 담으면
+          폐기한 뒤에도 파일에 남아 위험합니다. 새 기기에서는 토큰을 새로 발급해 넣으세요.
+        </div>
+      </div>
+
+      <div class="notice notice--danger">
+        <span class="notice__icon" aria-hidden="true">🔑</span>
+        <div class="notice__body">
+          백업 파일은 <b>암호로 잠깁니다.</b> 파일과 암호는 따로 전달하세요
+          (예: 파일은 메일, 암호는 문자).
+          <b>암호를 잊으면 그 파일은 다시 열 수 없습니다.</b> 복구 방법이 없습니다.
+        </div>
+      </div>
+    </div>
+
+    <!-- 위험 구역 -->
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">이 기기에서 지우기</h2>
+        <p class="panel__hint">되돌릴 수 없습니다. 먼저 백업을 내려받으세요</p>
+      </div>
+
+      <div class="toolbar" style="margin-bottom:12px">
+        <button class="btn btn--danger" id="btnClearStudents" type="button">명단만 지우기</button>
+        <button class="btn btn--danger" id="btnClearAll" type="button">
+          이 기기에서 모든 정보 지우기
+        </button>
+      </div>
+
+      <p class="panel__hint">
+        <b>모든 정보 지우기</b>는 학생 명단, 학부모 연락처, 깃허브 토큰, 작성 중인 내용,
+        발송 기록까지 이 브라우저에서 전부 삭제합니다.
+        조교를 교체하거나 노트북을 넘길 때 누르세요.
+        <b>깃허브에 이미 올라간 레포트 링크는 그대로 살아 있습니다.</b>
+      </p>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       ② 작성 — B단계에서 구현
+       ============================================================ -->
+  <section id="panel-write" role="tabpanel" aria-labelledby="tab-write" hidden>
+    <div class="panel">
+      <div class="soon">
+        <div class="soon__icon" aria-hidden="true">📝</div>
+        <div class="soon__title">B단계에서 만듭니다</div>
+        <div class="soon__desc">
+          주차 선택 → 반 공통(수업 차시·테스트 이름) → 학생별 입력(출결·별점·점수·과제·코멘트)<br>
+          먼저 ① 명단에 학생을 등록해 주세요.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       ③ 발행 — D단계에서 구현
+       ============================================================ -->
+  <section id="panel-publish" role="tabpanel" aria-labelledby="tab-publish" hidden>
+    <div class="panel">
+      <div class="soon">
+        <div class="soon__icon" aria-hidden="true">🚀</div>
+        <div class="soon__title">D단계에서 만듭니다</div>
+        <div class="soon__desc">
+          깃허브 토큰 저장 → 커밋 하나로 일괄 발행 → 링크·인사말 복사·문자 보내기<br>
+          <b>[토큰 지우기]</b> 버튼도 이 탭에 들어갑니다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============================================================
+     학생 추가·수정 모달
+     ============================================================ -->
+<dialog class="modal" id="studentModal">
+  <form method="dialog" id="studentForm">
+    <div class="modal__head">
+      <h2 class="modal__title" id="studentModalTitle">학생 추가</h2>
+      <p class="modal__desc">이름을 적으면 파일명에 쓸 로마자가 자동으로 채워집니다</p>
+    </div>
+
+    <div class="modal__body">
+      <div class="grid2">
+        <label class="field">
+          <span class="field__label">이름 *</span>
+          <input class="input" id="fName" type="text" required autocomplete="off" placeholder="김하늘">
+        </label>
+
+        <label class="field">
+          <span class="field__label">로마자 (파일명용) *</span>
+          <input class="input" id="fSlug" type="text" required autocomplete="off"
+                 placeholder="haneul" pattern="[a-z0-9]+">
+          <span class="field__hint">영어 소문자·숫자만. 한 번 정하면 계속 같은 값을 씁니다.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">학교</span>
+          <input class="input" id="fSchool" type="text" autocomplete="off" placeholder="OO고등학교">
+        </label>
+
+        <label class="field">
+          <span class="field__label">학년</span>
+          <input class="input" id="fGrade" type="text" autocomplete="off" placeholder="고1"
+                 list="gradeOptions">
+          <datalist id="gradeOptions">
+            <option value="중1"><option value="중2"><option value="중3">
+            <option value="고1"><option value="고2"><option value="고3">
+          </datalist>
+        </label>
+
+        <label class="field">
+          <span class="field__label">반</span>
+          <input class="input" id="fClass" type="text" autocomplete="off" placeholder="고1 A반"
+                 list="classOptions">
+          <datalist id="classOptions"></datalist>
+          <span class="field__hint">같은 반끼리 수업 내용을 한 번에 입력합니다.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">학부모 호칭 <span class="field__opt">선택</span></span>
+          <input class="input" id="fParentTitle" type="text" autocomplete="off"
+                 placeholder="어머님" list="titleOptions">
+          <datalist id="titleOptions">
+            <option value="어머님"><option value="아버님"><option value="보호자님">
+            <option value="할머님"><option value="할아버님">
+          </datalist>
+          <span class="field__hint">문자 인사말에 쓰입니다. 비우면 ‘어머님’으로 나갑니다.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">연락처 1 <span class="field__opt">선택</span></span>
+          <input class="input" id="fPhone" type="tel" inputmode="numeric" autocomplete="off"
+                 placeholder="010-1234-5678">
+          <span class="field__hint">문자 보내기에 쓰입니다. 레포트에는 들어가지 않습니다.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">연락처 2 <span class="field__opt">선택</span></span>
+          <input class="input" id="fPhone2" type="tel" inputmode="numeric" autocomplete="off"
+                 placeholder="010-9876-5432">
+          <span class="field__hint">문자 보낼 때 두 번호 중 골라서 보냅니다.</span>
+        </label>
+      </div>
+
+      <div class="modal__error" id="studentError"></div>
+    </div>
+
+    <div class="modal__foot">
+      <button class="btn" type="button" id="btnStudentCancel">취소</button>
+      <button class="btn btn--primary" type="submit" id="btnStudentSave">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============================================================
+     백업 암호 모달 (내보내기 / 불러오기 공용)
+     ============================================================ -->
+<dialog class="modal" id="passModal">
+  <form method="dialog" id="passForm">
+    <div class="modal__head">
+      <h2 class="modal__title" id="passTitle">백업 암호</h2>
+      <p class="modal__desc" id="passDesc"></p>
+    </div>
+
+    <div class="modal__body">
+      <label class="field" style="margin-bottom:12px">
+        <span class="field__label">암호</span>
+        <input class="input" id="fPass1" type="password" required minlength="4"
+               autocomplete="new-password" placeholder="4자 이상">
+      </label>
+
+      <label class="field" id="passConfirmField">
+        <span class="field__label">암호 확인</span>
+        <input class="input" id="fPass2" type="password" autocomplete="new-password"
+               placeholder="같은 암호를 한 번 더">
+      </label>
+
+      <div class="notice notice--danger" id="passWarn">
+        <span class="notice__icon" aria-hidden="true">🔒</span>
+        <div class="notice__body">
+          <b>암호를 잊으면 이 백업은 영영 열 수 없습니다.</b>
+          복구 수단이 없으니 안전한 곳에 적어 두세요.
+        </div>
+      </div>
+
+      <div class="modal__error" id="passError"></div>
+    </div>
+
+    <div class="modal__foot">
+      <button class="btn" type="button" id="btnPassCancel">취소</button>
+      <button class="btn btn--primary" type="submit" id="btnPassOk">확인</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============================================================
+     확인 모달
+     ============================================================ -->
+<dialog class="modal" id="confirmModal">
+  <form method="dialog">
+    <div class="modal__head">
+      <h2 class="modal__title" id="confirmTitle">확인</h2>
+      <p class="modal__desc" id="confirmDesc"></p>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" type="button" id="btnConfirmNo">취소</button>
+      <button class="btn btn--danger" type="button" id="btnConfirmYes">삭제</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
