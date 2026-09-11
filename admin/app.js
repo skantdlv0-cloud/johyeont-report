@@ -71,6 +71,7 @@
       $(t.tab).setAttribute('aria-selected', on ? 'true' : 'false');
       $(t.panel).hidden = !on;
     });
+    document.dispatchEvent(new CustomEvent('jt:tab', { detail: { index: idx } }));
   }
 
   TABS.forEach(function (t, i) {
@@ -730,5 +731,22 @@
 
   collapseIfCrowded();
   render();
+
+  /* ---------- 다른 탭(write.js)이 쓰는 공용 도구 ---------- */
+
+  global_UI();
+  function global_UI() {
+    window.UI = {
+      $: $, $$: $$,
+      toast: toast,
+      confirmAsk: confirmAsk,
+      selectTab: selectTab,
+      getStudents: function () { return students; }
+    };
+  }
+
+  /* 명단이 바뀌면 작성 탭도 다시 그려야 한다 */
+  var origRender = render;
+  window.addEventListener('jt:need-refresh', function () { origRender(); });
 
 })();

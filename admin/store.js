@@ -12,7 +12,9 @@
 
   var KEYS = {
     students:  'jt.students',
-    draft:     'jt.draft',
+    draft:     'jt.draft',      /* 작성 중인 주차 내용 (자동 임시 저장) */
+    queue:     'jt.queue',      /* 발행 대기열 */
+    history:   'jt.history',    /* 반별 지난 회차 (수업·테스트 이름) */
     published: 'jt.published',
     snippets:  'jt.snippets',
     sent:      'jt.sent',
@@ -219,7 +221,10 @@
       settings:  read(KEYS.settings, {}),
       sent:      read(KEYS.sent, {}),
       published: read(KEYS.published, {}),
-      snippets:  read(KEYS.snippets, [])
+      snippets:  read(KEYS.snippets, []),
+      draft:     read(KEYS.draft, null),
+      queue:     read(KEYS.queue, {}),
+      history:   read(KEYS.history, {})
     };
     var salt = crypto.getRandomValues(new Uint8Array(16));
     var iv   = crypto.getRandomValues(new Uint8Array(12));
@@ -265,7 +270,10 @@
           settings:  payload.settings  || {},
           sent:      payload.sent      || {},
           published: payload.published || {},
-          snippets:  payload.snippets  || []
+          snippets:  payload.snippets  || [],
+          draft:     payload.draft     || null,
+          queue:     payload.queue     || {},
+          history:   payload.history   || {}
         };
       }
 
@@ -297,7 +305,65 @@
     write(KEYS.sent,      p.sent      || {});
     write(KEYS.published, p.published || {});
     write(KEYS.snippets,  p.snippets  || []);
+    write(KEYS.queue,     p.queue     || {});
+    write(KEYS.history,   p.history   || {});
+    if (p.draft) write(KEYS.draft, p.draft); else remove(KEYS.draft);
   }
+
+  /* ---------- 날짜 ---------- */
+
+  function toISO(d) {
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getDate()).padStart(2, '0');
+  }
+
+  function parseISO(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '').trim());
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+  }
+
+  /* 그 날짜가 속한 주(월요일 시작)의 월요일 */
+  function mondayOf(d) {
+    var x = new Date(d.getTime());
+    var dow = x.getDay();                 /* 0=일 … 6=토 */
+    x.setDate(x.getDate() - ((dow + 6) % 7));
+    return x;
+  }
+
+  /* 시작일이 속한 주의 금요일 */
+  function fridayOfWeek(startISO) {
+    var d = parseISO(startISO);
+    if (!d) return '';
+    var mon = mondayOf(d);
+    mon.setDate(mon.getDate() + 4);
+    return toISO(mon);
+  }
+
+  /* 오늘이 속한 주의 월~금 */
+  function thisWeek() {
+    var mon = mondayOf(new Date());
+    var fri = new Date(mon.getTime());
+    fri.setDate(fri.getDate() + 4);
+    return { start: toISO(mon), end: toISO(fri) };
+  }
+
+  /* '2026-06-01' → '0601' (파일명용) */
+  function mmdd(iso) {
+    var m = /^\d{4}-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? m[1] + m[2] : '';
+  }
+
+  /* '2026-06-01' → '6/1' */
+  function shortDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? Number(m[2]) + '/' + Number(m[3]) : '';
+  }
+
+  /* ---------- 코멘트 상용구 ---------- */
+
+  function getSnippets()      { return read(KEYS.snippets, []); }
+  function saveSnippets(list) { return write(KEYS.snippets, list); }
 
   /* ---------- 토큰 ---------- */
 
@@ -340,6 +406,12 @@
     exportEncrypted: exportEncrypted,
     importEncrypted: importEncrypted,
     restorePayload: restorePayload,
+
+    toISO: toISO, parseISO: parseISO,
+    fridayOfWeek: fridayOfWeek, thisWeek: thisWeek,
+    mmdd: mmdd, shortDate: shortDate,
+
+    getSnippets: getSnippets, saveSnippets: saveSnippets,
 
     getToken: getToken, saveToken: saveToken, clearToken: clearToken,
     clearAll: clearAll, clearStudentsOnly: clearStudentsOnly
