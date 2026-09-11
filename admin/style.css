@@ -52,6 +52,78 @@ body {
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 64px; }
 
 /* ============================================================
+   로그인 관문
+   ============================================================ */
+body.is-locked { overflow: hidden; }
+
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--grad-bg);
+  overflow: auto;
+}
+.gate__card {
+  width: min(380px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 10px 34px rgba(139, 123, 216, .16);
+  padding: 26px 22px 20px;
+}
+.gate__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink-deep);
+}
+.gate__desc {
+  font-size: 12.5px;
+  color: var(--ink-light);
+  margin: 6px 0 20px;
+}
+.gate__submit {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 16px;
+  font-size: 14.5px;
+}
+.gate__foot {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ink-light);
+  text-align: center;
+}
+.gate .modal__error { margin-top: 12px; }
+
+/* 상단 로그인 표시 */
+.whoami {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.whoami__id {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-mid);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.brand__sub + .whoami { margin-left: 10px; }
+
+/* ============================================================
    상단 · 탭
    ============================================================ */
 .topbar {
