@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>{{STUDENT_NAME}} 학생 · 조현T 국어 주간 학습 레포트</title>
+<title>{{STUDENT_NAME}} 학생 · {{PERIOD_SHORT}} 레포트</title>
 
 <!-- ============================================================
      치환 플레이스홀더 (생성기가 채운다)
@@ -13,6 +13,7 @@
                          랜덤 4자를 반드시 붙인다. 이름만으로 다른 학생의
                          레포트를 추측해 여는 것을 막기 위함이다.
        {{STUDENT_NAME}}  김하늘
+       {{PERIOD_SHORT}}  6/1~6/5   (카톡 제목용 짧은 기간. 월/일만, 앞자리 0 없이)
        {{PUBLISH_DATE}}  2026.06.06
        {{REPORT_DATA}}   지시서 2-3 스키마의 JSON
 
@@ -35,8 +36,8 @@
      ============================================================ -->
 
 <meta property="og:type" content="website">
-<meta property="og:title" content="💗 조현T 국어 주간 학습 레포트 · {{STUDENT_NAME}} 학생">
-<meta property="og:description" content="이번 주 우리 아이의 학습 현황을 확인해보세요 💕">
+<meta property="og:title" content="💗 {{STUDENT_NAME}} 학생 · {{PERIOD_SHORT}} 레포트">
+<meta property="og:description" content="이번 주 수업 기록과 선생님 코멘트를 확인해 보세요 💕">
 <meta property="og:image" content="{{SITE_URL}}/assets/og-cover.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -45,8 +46,8 @@
 <meta property="og:locale" content="ko_KR">
 <meta property="og:site_name" content="조현T 국어">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="💗 조현T 국어 주간 학습 레포트 · {{STUDENT_NAME}} 학생">
-<meta name="twitter:description" content="이번 주 우리 아이의 학습 현황을 확인해보세요 💕">
+<meta name="twitter:title" content="💗 {{STUDENT_NAME}} 학생 · {{PERIOD_SHORT}} 레포트">
+<meta name="twitter:description" content="이번 주 수업 기록과 선생님 코멘트를 확인해 보세요 💕">
 <meta name="twitter:image" content="{{SITE_URL}}/assets/og-cover.png">
 
 <meta name="robots" content="noindex, nofollow">
@@ -127,6 +128,19 @@
   function formatPeriod(start, end) {
     var s = formatDate(start), e = formatDate(end);
     if (s && e) return s + ' ~ ' + e;
+    return s || e || '';
+  }
+
+  /* 2026-06-01 → '6/1'  (탭 제목·카톡 제목용 짧은 형식) */
+  function shortDate(d) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '').trim());
+    return m ? Number(m[2]) + '/' + Number(m[3]) : '';
+  }
+
+  /* → '6/1~6/5' */
+  function shortPeriod(start, end) {
+    var s = shortDate(start), e = shortDate(end);
+    if (s && e) return s + '~' + e;
     return s || e || '';
   }
 
@@ -393,8 +407,10 @@
       ratesHtml(data) +
       commentHtml(data);
 
+    /* head 의 <title> 과 같은 형식으로 맞춘다 → '김하늘 학생 · 6/1~6/5 레포트' */
     if (data.studentName) {
-      document.title = data.studentName + ' 학생 · 조현T 국어 주간 학습 레포트';
+      var sp = shortPeriod(data.startDate, data.endDate);
+      document.title = data.studentName + ' 학생 · ' + (sp ? sp + ' ' : '') + '레포트';
     }
 
     animate();
