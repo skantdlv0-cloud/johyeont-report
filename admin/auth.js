@@ -60,17 +60,22 @@
     showError('');
     setBusy(true);
 
+    /* 로그인 응답에 세션이 들어 있다. 여기서 getSession() 을 다시 부르면
+       라이브러리 내부 잠금을 서로 기다리다 화면이 멈춘다. */
     SB.signIn(idInput.value, pwInput.value)
-      .then(function () {
-        return SB.getSession();
-      })
       .then(function (session) {
         setBusy(false);
-        showApp(session);
+        try {
+          showApp(session);
+        } catch (uiErr) {
+          /* 화면 전환에서 터져도 버튼이 멈춰 있으면 안 된다 */
+          console.error(uiErr);
+          showError('로그인은 됐지만 화면을 여는 중 문제가 생겼습니다. 새로고침해 주세요.');
+        }
       })
       .catch(function (err) {
         setBusy(false);
-        showError(err.message);
+        showError(err && err.message ? err.message : '로그인에 실패했습니다.');
         pwInput.value = '';
         pwInput.focus();
       });
@@ -108,17 +113,21 @@
       return;
     }
 
+    /* 세션 확인이 늦어져도 화면이 빈 채로 멈추지 않게 한다 */
     SB.getSession().then(function (session) {
       if (session) showApp(session);
       else showLogin();
-    }).catch(function () {
+    }).catch(function (err) {
+      console.error(err);
       showLogin();
+      showError('로그인 상태를 확인하지 못했습니다. 다시 로그인해 주세요.');
     });
 
-    /* 다른 탭에서 로그아웃하면 이 탭도 잠근다 */
+    /* 다른 탭에서 로그아웃하면 이 탭도 잠근다.
+       이 콜백 안에서는 Supabase 함수를 부르지 않는다 (supabase.js 에서 한 박자 미뤄 부른다). */
     SB.onAuthChange(function (event, session) {
-      if (event === 'SIGNED_OUT' || !session) {
-        if (!gate.hidden) return;
+      if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+        if (!gate.hidden) return;     /* 이미 잠겨 있으면 그대로 */
         showLogin();
       }
     });

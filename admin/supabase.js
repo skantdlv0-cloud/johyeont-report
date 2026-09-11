@@ -31,6 +31,7 @@
       auth: {
         persistSession: true,        /* 새로고침해도 로그인 유지 */
         autoRefreshToken: true,
+        detectSessionInUrl: false,   /* 주소창으로 로그인하지 않는다 */
         storageKey: 'jt.auth'
       }
     });
@@ -53,15 +54,49 @@
     return at === -1 ? v : v.slice(0, at);
   }
 
+  /* 약속이 정해진 시간 안에 끝나지 않으면 실패로 돌린다.
+     화면이 말없이 멈춰 있는 것보다 오류를 보여 주는 편이 낫다. */
+  function withTimeout(promise, ms, message) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error(message));
+      }, ms);
+      promise.then(function (v) {
+        if (settled) return;
+        settled = true; clearTimeout(timer); resolve(v);
+      }, function (e) {
+        if (settled) return;
+        settled = true; clearTimeout(timer); reject(e);
+      });
+    });
+  }
+
+  /* 로그인.
+     응답에 세션이 들어 있으므로 뒤이어 getSession() 을 부르지 않는다.
+     signInWithPassword 가 내부 잠금을 쥔 상태에서 then 이 돌기 때문에,
+     그 안에서 다른 auth 호출을 하면 잠금을 서로 기다리다 멈춘다. */
   function signIn(id, password) {
     var email = toEmail(id);
     if (!email) return Promise.reject(new Error('아이디를 입력해 주세요.'));
     if (!password) return Promise.reject(new Error('비밀번호를 입력해 주세요.'));
 
-    return init().auth.signInWithPassword({ email: email, password: password })
+    var call;
+    try {
+      call = init().auth.signInWithPassword({ email: email, password: password });
+    } catch (e) {
+      return Promise.reject(translate(e));
+    }
+
+    return withTimeout(call, 20000, '서버 응답이 없습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.')
       .then(function (res) {
         if (res.error) throw translate(res.error);
-        return res.data.user;
+        if (!res.data || !res.data.session) {
+          throw new Error('로그인은 됐지만 세션을 받지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+        }
+        return res.data.session;
       });
   }
 
@@ -70,13 +105,24 @@
   }
 
   function getSession() {
-    return init().auth.getSession().then(function (r) {
+    return withTimeout(
+      init().auth.getSession(),
+      15000,
+      '로그인 상태를 확인하지 못했습니다.'
+    ).then(function (r) {
       return r.data ? r.data.session : null;
     });
   }
 
+  /* 콜백은 라이브러리가 내부 잠금을 쥔 채로 부른다.
+     그 안에서 auth 함수를 다시 부르면 멈추므로, 한 박자 뒤로 미뤄 실행한다. */
   function onAuthChange(fn) {
-    init().auth.onAuthStateChange(function (event, session) { fn(event, session); });
+    init().auth.onAuthStateChange(function (event, session) {
+      setTimeout(function () {
+        try { fn(event, session); }
+        catch (e) { console.error('auth 콜백 오류', e); }
+      }, 0);
+    });
   }
 
   /* Supabase 오류 메시지를 우리 상황에 맞게 바꾼다 */
@@ -107,6 +153,7 @@
     get client() { return init(); },
     toEmail: toEmail,
     toShortId: toShortId,
+    withTimeout: withTimeout,
     signIn: signIn,
     signOut: signOut,
     getSession: getSession,
