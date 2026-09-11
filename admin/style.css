@@ -36,6 +36,13 @@
 body, h1, h2, h3, p, ul, li, figure, dl, dd { margin: 0; padding: 0; }
 ul { list-style: none; }
 
+/* hidden 속성은 브라우저 기본 [hidden]{display:none} 으로 동작한다.
+   그런데 .gate{display:grid} 처럼 클래스로 display 를 주면 명시도가 같고
+   이 파일이 나중에 오므로 클래스가 이긴다. 그러면 el.hidden = true 를 해도
+   화면에서 사라지지 않는다. (로그인 화면이 안 닫히던 원인)
+   전역으로 못을 박아 둔다. */
+[hidden] { display: none !important; }
+
 body {
   font-family: 'Pretendard Variable', Pretendard, -apple-system,
                'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
