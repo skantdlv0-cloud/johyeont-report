@@ -32,18 +32,36 @@
     pwInput.disabled = on;
   }
 
+  /* 로그인한 뒤, 서버에서 데이터를 받아 온 다음 화면을 연다.
+     받아오기 전에 열면 빈 명단이 잠깐 보이고, 그 상태로 저장이 돌면
+     서버 명단을 덮어쓸 위험이 있다. */
   function showApp(session) {
-    gate.hidden = true;
-    appRoot.hidden = false;
-    topbar.hidden = false;
-
     var id = SB.toShortId(session && session.user && session.user.email);
-    $('#whoami').textContent = id || '';
-    $('#whoamiWrap').hidden = !id;
-    document.body.classList.remove('is-locked');
+
+    setBusy(true);
+    btn.textContent = '불러오는 중…';
+
+    return Store.loadAll().then(function () {
+      Store.enableSync(true);          /* 다 받은 뒤에야 서버로 밀기 시작한다 */
+
+      gate.hidden = true;
+      appRoot.hidden = false;
+      topbar.hidden = false;
+      $('#whoami').textContent = id || '';
+      $('#whoamiWrap').hidden = !id;
+      document.body.classList.remove('is-locked');
+      setBusy(false);
+
+      window.dispatchEvent(new CustomEvent('jt:loaded'));
+    }).catch(function (err) {
+      Store.enableSync(false);
+      setBusy(false);
+      showError('데이터를 불러오지 못했습니다 — ' + (err && err.message ? err.message : err));
+    });
   }
 
   function showLogin() {
+    Store.enableSync(false);         /* 로그인 전에는 서버로 아무것도 보내지 않는다 */
     gate.hidden = false;
     appRoot.hidden = true;
     topbar.hidden = true;
@@ -108,6 +126,26 @@
        배포했는데 화면이 그대로일 때, 옛 파일이 캐시로 남았는지 바로 알 수 있다. */
     var verEl = $('#appVersion');
     if (verEl) verEl.textContent = 'v' + (window.SB ? SB.VERSION : '?');
+
+    /* 저장 상태를 상단에 보여 준다. 여러 기기에서 같이 쓰므로
+       '지금 서버에 올라갔는지'가 눈에 보여야 한다. */
+    var dot = $('#syncDot');
+    Store.onSyncChange(function (s) {
+      if (!dot) return;
+      if (s.error) {
+        dot.className = 'sync sync--bad';
+        dot.textContent = '저장 실패';
+        dot.title = s.error;
+      } else if (s.pending > 0) {
+        dot.className = 'sync sync--busy';
+        dot.textContent = '저장 중';
+        dot.title = '';
+      } else {
+        dot.className = 'sync sync--ok';
+        dot.textContent = '저장됨';
+        dot.title = '';
+      }
+    });
 
     try {
       SB.init();

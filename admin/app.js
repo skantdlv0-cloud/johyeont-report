@@ -729,6 +729,56 @@
      시작
      ============================================================ */
 
+  /* ============================================================
+     S-4. 이 브라우저에 있던 자료를 서버로 올리기
+
+     예전 방식(브라우저 저장)으로 쌓아 둔 명단이 있는데
+     서버가 비어 있을 때만 안내를 띄운다.
+     ============================================================ */
+
+  function refreshMigrateNotice() {
+    var local = Store.getStudents();
+    /* 서버가 비어 있는데 이 브라우저에만 명단이 있을 때만 안내한다 */
+    $('#migrateNotice').hidden = !(local.length && Store.wasServerEmpty());
+  }
+
+  $('#btnMigrate').addEventListener('click', function () {
+    var n = students.length;
+    confirmAsk(
+      '서버로 올리기',
+      '이 브라우저에 있는 학생 ' + n + '명과 작성 내용을 서버로 올립니다. ' +
+      '서버에 이미 같은 학생이 있으면 이 브라우저 내용으로 덮어씁니다.',
+      '올리기'
+    ).then(function (ok) {
+      if (!ok) return;
+      var btn = $('#btnMigrate');
+      btn.disabled = true;
+      btn.textContent = '올리는 중…';
+
+      Store.migrateLocalToServer().then(function (r) {
+        students = Store.getStudents();
+        render();
+        $('#migrateNotice').hidden = true;
+        toast('학생 ' + r.students + '명 · 입력 ' + r.entries + '건을 올렸습니다', 'good');
+        window.dispatchEvent(new CustomEvent('jt:loaded'));
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = '서버로 올리기';
+        toast('올리지 못했습니다 — ' + e.message, 'bad');
+      });
+    });
+  });
+
+  /* 서버에서 다 받아온 뒤 화면을 새로 그린다 */
+  window.addEventListener('jt:loaded', function () {
+    students = Store.getStudents();
+    settings = Store.read(Store.KEYS.settings, {});
+    collapsed = {};
+    collapseIfCrowded();
+    render();
+    refreshMigrateNotice();
+  });
+
   collapseIfCrowded();
   render();
 

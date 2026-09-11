@@ -63,14 +63,21 @@
   }
 
   var saveTimer = null;
+  var dirty = false;          /* 이 화면에서 실제로 고친 게 있는가 */
 
+  /* 고친 적이 없으면 저장하지 않는다.
+     탭을 두 개 열어 둔 경우, 손대지 않은 탭이 닫히면서
+     메모리에 있던 옛 내용으로 다른 탭의 작업을 덮어쓸 수 있다. */
   function flushDraft() {
     clearTimeout(saveTimer);
     saveTimer = null;
+    if (!dirty) return;
+    dirty = false;
     Store.write(Store.KEYS.draft, draft);
   }
 
   function saveDraft() {
+    dirty = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flushDraft, 400);
   }
@@ -294,28 +301,44 @@
 
   /* ---------- 지난주 불러오기 (C단계) ---------- */
 
+  /* 지난 회차는 서버에서 찾는다. 조교가 쓴 것을 선생님 기기에서도 불러올 수 있어야 한다. */
   $('#btnLoadLast').addEventListener('click', function () {
-    var hist = Store.read(Store.KEYS.history, {});
-    var h = hist[currentClass];
-    if (!h) { toast('이 반의 지난 회차 기록이 없습니다', 'bad'); return; }
+    if (!currentClass) { toast('반을 먼저 고르세요', 'bad'); return; }
+    if (!draft.weekStart) { toast('주차를 먼저 정하세요', 'bad'); return; }
 
-    var c = commonOf(currentClass);
-    var hasContent = c.lessons.some(function (x) { return String(x || '').trim(); }) ||
-                     c.tests.some(function (x) { return String(x || '').trim(); });
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = '찾는 중…';
 
-    function apply() {
-      c.lessons = (h.lessons || ['']).slice();
-      c.tests   = (h.tests || ['']).slice();
-      if (!c.lessons.length) c.lessons = [''];
-      if (!c.tests.length) c.tests = [''];
-      saveDraft(); renderCommon(); renderEntries(); schedulePreview();
-      toast((h.week ? h.week + ' 회차를 ' : '') + '불러왔습니다', 'good');
-    }
+    DB.lastCommonOf(currentClass, draft.weekStart).then(function (h) {
+      btn.disabled = false;
+      btn.textContent = '지난주 불러오기';
 
-    if (!hasContent) { apply(); return; }
-    UI.confirmAsk('지난주 불러오기',
-      '지금 입력한 수업 내용과 테스트 이름을 지난 회차 것으로 바꿉니다.',
-      '바꾸기').then(function (ok) { if (ok) apply(); });
+      if (!h) { toast('이 반의 지난 회차 기록이 없습니다', 'bad'); return; }
+
+      var c = commonOf(currentClass);
+      var hasContent = c.lessons.some(function (x) { return String(x || '').trim(); }) ||
+                       c.tests.some(function (x) { return String(x || '').trim(); });
+
+      function apply() {
+        c.lessons = (h.lessons || ['']).slice();
+        c.tests   = (h.tests || ['']).slice();
+        if (!c.lessons.length) c.lessons = [''];
+        if (!c.tests.length) c.tests = [''];
+        saveDraft(); renderCommon(); renderEntries(); schedulePreview();
+        toast(Store.shortDate(h.weekStart) + ' 주차를 불러왔습니다', 'good');
+      }
+
+      if (!hasContent) { apply(); return; }
+      UI.confirmAsk('지난주 불러오기',
+        Store.shortDate(h.weekStart) + ' 주차 내용으로 바꿉니다. 지금 입력한 수업 내용과 테스트 이름은 사라집니다.',
+        '바꾸기').then(function (ok) { if (ok) apply(); });
+
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = '지난주 불러오기';
+      toast('불러오지 못했습니다 — ' + e.message, 'bad');
+    });
   });
 
   /* ============================================================
@@ -920,6 +943,15 @@
   /* 작성 탭이 열릴 때마다 최신 명단으로 다시 그린다 */
   document.addEventListener('jt:tab', function (e) {
     if (e.detail.index === 1) refreshAll();
+  });
+
+  /* 서버에서 받아온 뒤에는 그 내용으로 다시 그린다 */
+  window.addEventListener('jt:loaded', function () {
+    draft = loadDraft();
+    selectedId = '';
+    collapsedEntries = {};
+    renderWeek();
+    if (!$('#panel-write').hidden) refreshAll();
   });
 
   /* ============================================================

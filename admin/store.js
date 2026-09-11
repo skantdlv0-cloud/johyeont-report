@@ -36,14 +36,102 @@
     }
   }
 
+  /* ---------- 서버 동기화 ----------
+     모든 저장이 write() 한 곳을 지나므로, 여기서 서버로도 밀어 준다.
+     화면 코드는 예전 그대로 두고 저장 방식만 바꾸기 위한 구조다.
+
+     로컬 저장은 즉시 끝내고(화면이 기다리지 않게), 서버 전송은 묶어서 보낸다. */
+
+  var syncEnabled = false;          /* 로그인 전에는 서버로 보내지 않는다 */
+  var syncTimers = {};
+  var syncState = { pending: 0, error: null };
+  var syncListeners = [];
+
+  function onSyncChange(fn) { syncListeners.push(fn); }
+
+  function emitSync() {
+    syncListeners.forEach(function (fn) {
+      try { fn(syncState); } catch (e) { console.error(e); }
+    });
+  }
+
+  function enableSync(on) {
+    syncEnabled = !!on;
+    syncState.error = null;
+    emitSync();
+  }
+
+  function runSync(label, fn) {
+    syncState.pending++;
+    emitSync();
+    return Promise.resolve().then(fn).then(function () {
+      syncState.pending--;
+      syncState.error = null;
+      emitSync();
+    }).catch(function (e) {
+      syncState.pending--;
+      syncState.error = (e && e.message) || String(e);
+      console.error('동기화 실패 [' + label + ']', e);
+      emitSync();
+    });
+  }
+
+  /* 같은 종류의 저장이 연달아 오면 마지막 것만 보낸다 */
+  function queueSync(label, delay, fn) {
+    if (!syncEnabled || !global.DB) return;
+    clearTimeout(syncTimers[label]);
+    syncTimers[label] = setTimeout(function () { runSync(label, fn); }, delay);
+  }
+
+  function pushToServer(key, value) {
+    if (key === KEYS.students) {
+      queueSync('students', 500, function () { return global.DB.syncStudents(value); });
+
+    } else if (key === KEYS.snippets) {
+      queueSync('snippets', 700, function () { return global.DB.saveSnippets(value); });
+
+    } else if (key === KEYS.draft) {
+      queueSync('draft', 800, function () { return pushDraft(value); });
+
+    } else if (key === KEYS.published) {
+      /* 발행은 D단계에서 건별로 직접 보낸다 */
+    }
+    /* jt.settings 는 기기별 화면 설정이라 서버에 보내지 않는다.
+       jt.queue, jt.history 는 entries·week_common 에서 다시 만들 수 있어 로컬에만 둔다. */
+  }
+
+  function pushDraft(draft) {
+    if (!draft || !draft.weekStart) return Promise.resolve();
+
+    var ids = getStudents().map(function (s) { return s.id; });
+    var jobs = [];
+
+    Object.keys(draft.common || {}).forEach(function (cls) {
+      if (!cls || cls === '_') return;
+      var c = draft.common[cls];
+      jobs.push(global.DB.saveWeekCommon(draft.weekStart, draft.weekEnd, cls, c.lessons, c.tests));
+    });
+
+    jobs.push(global.DB.saveEntries(draft.weekStart, draft.entries, ids));
+    return Promise.all(jobs);
+  }
+
   function write(key, value) {
+    var ok = true;
     try {
       localStorage.setItem(key, JSON.stringify(value));
-      return true;
     } catch (e) {
       console.error('저장 실패:', key, e);
-      return false;
+      ok = false;
     }
+    try { pushToServer(key, value); } catch (e) { console.error(e); }
+    return ok;
+  }
+
+  /* 로컬에만 저장 (서버로 보내지 않음). 서버에서 받아온 값을 캐시에 넣을 때 쓴다. */
+  function writeLocal(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) { return false; }
   }
 
   function remove(key) {
@@ -132,12 +220,20 @@
 
   /* ---------- 학생 명단 ---------- */
 
+  /* 학생 id 는 Supabase 의 uuid 를 그대로 쓴다.
+     브라우저에서 만들어 두면 서버가 새 id 를 주지 않아 옮겨 담을 일이 없다. */
   function newId() {
-    var a = new Uint8Array(5);
+    if (crypto.randomUUID) return crypto.randomUUID();
+    var a = new Uint8Array(16);
     crypto.getRandomValues(a);
-    return 's_' + Array.from(a).map(function (b) {
-      return b.toString(16).padStart(2, '0');
-    }).join('');
+    a[6] = (a[6] & 0x0f) | 0x40;
+    a[8] = (a[8] & 0x3f) | 0x80;
+    var h = Array.from(a).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+  }
+
+  function isUuid(v) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ''));
   }
 
   function getStudents() {
@@ -365,6 +461,149 @@
   function getSnippets()      { return read(KEYS.snippets, []); }
   function saveSnippets(list) { return write(KEYS.snippets, list); }
 
+  /* ============================================================
+     서버에서 전체 받아 캐시에 넣기 (로그인 직후)
+     ============================================================ */
+
+  var serverWasEmpty = false;
+
+  /* 서버 내용을 받아 이 기기의 캐시에 넣는다.
+
+     중요: 서버가 비어 있는데 이 브라우저에만 자료가 있을 수 있다.
+     (예전 방식으로 쓰던 기기에서 처음 로그인한 경우)
+     그때 서버(빈 값)로 덮어쓰면 옮길 자료가 사라진다.
+     그래서 서버에 학생이 하나도 없으면 이 기기 내용을 그대로 둔다.
+     대신 '서버로 올리기' 안내를 띄운다. */
+  function loadAll() {
+    if (!global.DB) return Promise.reject(new Error('DB 모듈이 없습니다.'));
+
+    return global.DB.loadAll().then(function (d) {
+      var serverHasData = d.students.length > 0;
+      var localHasData = getStudents().length > 0;
+
+      serverWasEmpty = !serverHasData;
+
+      if (!serverHasData && localHasData) {
+        return d;                      /* 이 기기 것을 지킨다 */
+      }
+
+      writeLocal(KEYS.students, d.students);
+      writeLocal(KEYS.snippets, d.snippets);
+      writeLocal(KEYS.sent, d.sent);
+      writeLocal(KEYS.published, d.published);
+
+      /* 열어 둘 주차 — 서버에 내용이 있는 가장 최근 주차 */
+      var weeks = Object.keys(d.entries).concat(Object.keys(d.common)).sort();
+      var week = weeks.length ? weeks[weeks.length - 1] : thisWeek().start;
+
+      writeLocal(KEYS.draft, {
+        weekStart: week,
+        weekEnd: d.weekEnds[week] || fridayOfWeek(week),
+        common: d.common[week] || {},
+        entries: d.entries[week] || {}
+      });
+
+      return d;
+    });
+  }
+
+  function wasServerEmpty() { return serverWasEmpty; }
+
+  /* ============================================================
+     S-4. 이 브라우저에 있던 내용을 Supabase 로 한 번에 올리기
+
+     예전 학생 id 는 's_1a2b' 같은 값이라 Supabase 의 uuid 와 맞지 않는다.
+     새 uuid 를 만들어 붙이고, 그 id 를 쓰던 곳(작성 내용·보냄 표시·발행 이력)도
+     함께 바꿔 준다.
+     ============================================================ */
+
+  function migrateLocalToServer() {
+    if (!global.DB) return Promise.reject(new Error('DB 모듈이 없습니다.'));
+
+    var students = getStudents();
+    if (!students.length) {
+      return Promise.reject(new Error('이 브라우저에 올릴 명단이 없습니다.'));
+    }
+
+    /* 옛 id → 새 uuid */
+    var idMap = {};
+    var fixed = students.map(function (s) {
+      var next = isUuid(s.id) ? s.id : newId();
+      idMap[s.id] = next;
+      var copy = {};
+      Object.keys(s).forEach(function (k) { copy[k] = s[k]; });
+      copy.id = next;
+      return copy;
+    });
+
+    function remapByStudent(obj) {
+      var out = {};
+      Object.keys(obj || {}).forEach(function (week) {
+        out[week] = {};
+        Object.keys(obj[week] || {}).forEach(function (sid) {
+          out[week][idMap[sid] || sid] = obj[week][sid];
+        });
+      });
+      return out;
+    }
+
+    var draft = read(KEYS.draft, null);
+    if (draft && draft.entries) {
+      var e2 = {};
+      Object.keys(draft.entries).forEach(function (sid) {
+        e2[idMap[sid] || sid] = draft.entries[sid];
+      });
+      draft.entries = e2;
+    }
+
+    var sent = remapByStudent(read(KEYS.sent, {}));
+    var published = remapByStudent(read(KEYS.published, {}));
+    var snippets = getSnippets().map(function (s) {
+      return { id: isUuid(s.id) ? s.id : newId(), text: s.text };
+    });
+
+    /* 먼저 로컬을 새 id 로 바꿔 둔다. 중간에 실패해도 다시 시도할 수 있다. */
+    writeLocal(KEYS.students, fixed);
+    if (draft) writeLocal(KEYS.draft, draft);
+    writeLocal(KEYS.sent, sent);
+    writeLocal(KEYS.published, published);
+    writeLocal(KEYS.snippets, snippets);
+
+    var ids = fixed.map(function (s) { return s.id; });
+    var report = { students: fixed.length, entries: 0, commons: 0, snippets: snippets.length, sent: 0 };
+
+    return global.DB.syncStudents(fixed)
+      .then(function () { return global.DB.saveSnippets(snippets); })
+      .then(function () {
+        if (!draft || !draft.weekStart) return null;
+        var jobs = [];
+        Object.keys(draft.common || {}).forEach(function (cls) {
+          if (!cls || cls === '_') return;
+          report.commons++;
+          var c = draft.common[cls];
+          jobs.push(global.DB.saveWeekCommon(draft.weekStart, draft.weekEnd, cls, c.lessons, c.tests));
+        });
+        report.entries = Object.keys(draft.entries || {}).length;
+        jobs.push(global.DB.saveEntries(draft.weekStart, draft.entries, ids));
+        return Promise.all(jobs);
+      })
+      .then(function () {
+        var jobs = [];
+        Object.keys(sent).forEach(function (week) {
+          Object.keys(sent[week]).forEach(function (sid) {
+            if (ids.indexOf(sid) === -1) return;
+            report.sent++;
+            jobs.push(global.DB.markSent(week, sid, sent[week][sid].via, sent[week][sid].by));
+          });
+        });
+        return Promise.all(jobs);
+      })
+      .then(function () {
+        serverWasEmpty = false;      /* 이제 서버에 자료가 있다 → 안내를 내린다 */
+        return report;
+      });
+  }
+
   /* ---------- 토큰 ---------- */
 
   function getToken()      { return read(KEYS.token, null); }
@@ -387,9 +626,17 @@
     SCHEMA_VERSION: SCHEMA_VERSION,
     KEYS: KEYS,
 
-    read: read, write: write, remove: remove,
+    read: read, write: write, writeLocal: writeLocal, remove: remove,
+
+    loadAll: loadAll,
+    wasServerEmpty: wasServerEmpty,
+    migrateLocalToServer: migrateLocalToServer,
+    enableSync: enableSync,
+    onSyncChange: onSyncChange,
+    syncState: syncState,
 
     newId: newId,
+    isUuid: isUuid,
     getStudents: getStudents,
     saveStudents: saveStudents,
     upsertStudent: upsertStudent,
