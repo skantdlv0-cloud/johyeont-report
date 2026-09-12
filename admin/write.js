@@ -471,9 +471,7 @@
     $('#entryProgress').textContent = currentClass
       ? currentClass + ' · ' + done + ' / ' + list.length + '명 작성됨'
       : '';
-    $('#queueInfo').textContent = done
-      ? done + '명을 담을 수 있습니다'
-      : '출결을 고른 학생만 담깁니다';
+    $('#queueInfo').textContent = done ? done + '명 작성됨 · 발행 탭에 자동으로 올라갑니다' : '출결을 고르면 발행 목록에 올라갑니다';
     $('#btnEnqueue').disabled = !done;
   }
 
@@ -571,7 +569,7 @@
     var done = list.filter(function (s) { return isWritten(s.id); }).length;
     $('#entryProgress').textContent = currentClass
       ? currentClass + ' · ' + done + ' / ' + list.length + '명 작성됨' : '';
-    $('#queueInfo').textContent = done ? done + '명을 담을 수 있습니다' : '출결을 고른 학생만 담깁니다';
+    $('#queueInfo').textContent = done ? done + '명 작성됨 · 발행 탭에 자동으로 올라갑니다' : '출결을 고르면 발행 목록에 올라갑니다';
     $('#btnEnqueue').disabled = !done;
   }
 
@@ -871,48 +869,15 @@
     doEnqueue();
   });
 
+  /* 예전에는 '대기열'에 담아 두었지만, 발행 탭이 입력 내용에서 직접 목록을 만든다.
+     따로 담을 필요가 없으므로 맞춤법만 확인하고 발행 탭으로 넘겨준다. */
   function doEnqueue() {
     var list = pendingEnqueue;
     pendingEnqueue = null;
     if (!list) return;
 
-    var queue = Store.read(Store.KEYS.queue, {});
-    var week = draft.weekStart;
-    queue[week] = queue[week] || {};
-
-    var common = commonOf(currentClass);
-
-    list.forEach(function (s) {
-      var data = Report.toReportData(s, common, entryOf(s.id),
-                                     { start: draft.weekStart, end: draft.weekEnd });
-      /* 같은 주차에 다시 담으면 경로를 유지해 링크가 바뀌지 않게 한다 */
-      var prev = queue[week][s.id];
-      var path = prev ? prev.path : Report.buildPath(s, draft.weekStart);
-
-      queue[week][s.id] = {
-        studentId: s.id,
-        studentName: s.name,
-        className: currentClass,
-        path: path,
-        data: data,
-        preparedAt: Date.now()
-      };
-    });
-
-    Store.write(Store.KEYS.queue, queue);
-
-    /* 지난주 불러오기용 기록 */
-    var hist = Store.read(Store.KEYS.history, {});
-    hist[currentClass] = {
-      lessons: (common.lessons || []).slice(),
-      tests: (common.tests || []).slice(),
-      week: Store.shortDate(draft.weekStart) + '~' + Store.shortDate(draft.weekEnd),
-      savedAt: Date.now()
-    };
-    Store.write(Store.KEYS.history, hist);
-
-    toast(currentClass + ' ' + list.length + '명을 대기열에 담았습니다', 'good');
-    renderClassPicker();
+    flushDraft();                 /* 넘어가기 전에 마지막 입력까지 저장 */
+    UI.selectTab(2);
   }
 
   /* ============================================================

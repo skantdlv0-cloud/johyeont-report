@@ -27,7 +27,8 @@
     published: {},
     sent: {},
     greeting: DEFAULT_GREETING,
-    filter: 'all'
+    filter: 'all',
+    classFilter: ''
   };
 
   /* ============================================================
@@ -200,7 +201,10 @@
     }
 
     var rows = rowsForWeek();
+    refreshClassOptions(rows);
+
     var shown = rows.filter(function (r) {
+      if (state.classFilter && (r.student.className || '') !== state.classFilter) return false;
       return state.filter === 'all' ? true
            : state.filter === 'todo' ? !r.sent
            : r.sent;
@@ -227,6 +231,37 @@
     host.appendChild(frag);
   }
 
+  /* 이 주차에 발행된 학생들의 반만 고를 수 있게 한다.
+     반이 5~6개면 전체 목록에서 찾는 것보다 반으로 먼저 좁히는 게 빠르다. */
+  function refreshClassOptions(rows) {
+    var sel = $('#sendClassFilter');
+    var counts = {};
+    rows.forEach(function (r) {
+      var c = (r.student.className || '').trim() || '(반 없음)';
+      counts[c] = (counts[c] || 0) + 1;
+    });
+
+    var names = Object.keys(counts).sort(function (a, b) { return a.localeCompare(b, 'ko'); });
+    var keep = state.classFilter;
+
+    sel.textContent = '';
+    var all = document.createElement('option');
+    all.value = ''; all.textContent = '전체 반 (' + rows.length + ')';
+    sel.appendChild(all);
+
+    names.forEach(function (n) {
+      var o = document.createElement('option');
+      o.value = n;
+      o.textContent = n + ' (' + counts[n] + ')';
+      sel.appendChild(o);
+    });
+
+    /* 고르고 있던 반이 이 주차에 없으면 전체로 되돌린다 */
+    if (keep && names.indexOf(keep) === -1) state.classFilter = '';
+    sel.value = state.classFilter;
+    sel.hidden = names.length < 2;
+  }
+
   /* 한 줄만 다시 그린다. 40명을 매번 다시 그리지 않는다. */
   function updateRow(studentId) {
     var el = $('.send-row[data-id="' + studentId + '"]', $('#sendList'));
@@ -247,9 +282,13 @@
 
   function updateProgress() {
     var rows = rowsForWeek();
-    var done = rows.filter(function (r) { return r.sent; }).length;
-    $('#sendProgress').textContent = rows.length
-      ? done + ' / ' + rows.length + '명 보냄'
+    var scope = state.classFilter
+      ? rows.filter(function (r) { return (r.student.className || '') === state.classFilter; })
+      : rows;
+    var done = scope.filter(function (r) { return r.sent; }).length;
+
+    $('#sendProgress').textContent = scope.length
+      ? (state.classFilter ? state.classFilter + ' ' : '') + done + ' / ' + scope.length + '명 보냄'
       : '';
   }
 
@@ -345,6 +384,13 @@
   $('#sendFilter').addEventListener('change', function (e) {
     state.filter = e.target.value;
     renderList();
+    updateProgress();
+  });
+
+  $('#sendClassFilter').addEventListener('change', function (e) {
+    state.classFilter = e.target.value;
+    renderList();
+    updateProgress();
   });
 
   $('#btnSendRefresh').addEventListener('click', function () {

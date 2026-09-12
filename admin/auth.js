@@ -41,7 +41,9 @@
     setBusy(true);
     btn.textContent = '불러오는 중…';
 
-    return Store.loadAll().then(function () {
+    /* loadAll 이 그 자리에서 터지는 경우가 있다(라이브러리가 덜 떴을 때 등).
+       Promise 로 감싸 두면 그 경우도 아래 catch 로 내려와 버튼이 풀린다. */
+    return new Promise(function (resolve) { resolve(Store.loadAll()); }).then(function () {
       Store.enableSync(true);          /* 다 받은 뒤에야 서버로 밀기 시작한다 */
 
       gate.hidden = true;
@@ -55,8 +57,9 @@
       window.dispatchEvent(new CustomEvent('jt:loaded'));
     }).catch(function (err) {
       Store.enableSync(false);
-      setBusy(false);
-      showError('데이터를 불러오지 못했습니다 — ' + (err && err.message ? err.message : err));
+      setBusy(false);                 /* 다시 눌러 볼 수 있어야 한다 */
+      console.error(err);
+      showError('데이터를 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 로그인해 주세요.');
     });
   }
 
@@ -88,7 +91,8 @@
         } catch (uiErr) {
           /* 화면 전환에서 터져도 버튼이 멈춰 있으면 안 된다 */
           console.error(uiErr);
-          showError('로그인은 됐지만 화면을 여는 중 문제가 생겼습니다. 새로고침해 주세요.');
+          setBusy(false);
+          showError('로그인은 됐지만 화면을 여는 중 문제가 생겼습니다. 다시 시도해 주세요.');
         }
       })
       .catch(function (err) {

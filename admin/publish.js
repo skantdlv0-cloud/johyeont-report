@@ -62,6 +62,7 @@
       btn.disabled = false;
       btn.textContent = '확인하고 저장';
       renderToken();
+      renderList();          /* '토큰을 먼저 저장해 주세요' 안내를 원래 문구로 되돌린다 */
       toast('토큰을 확인했습니다', 'good');
     }).catch(function (e) {
       btn.disabled = false;
@@ -156,24 +157,48 @@
       return;
     }
 
-    var frag = document.createDocumentFragment();
+    /* 반이 여러 개면 반별로 묶어 보여준다.
+       44명이 한 줄로 쏟아지면 어느 반이 빠졌는지 알아보기 어렵다. */
+    var groups = [];
+    var index = {};
     pending.forEach(function (p) {
-      var row = document.createElement('div');
-      row.className = 'pub-row';
-      row.innerHTML =
-        '<span class="pub-row__name"></span>' +
-        '<span class="pub-row__cls"></span>' +
-        (p.republish ? '<span class="pub-row__tag">다시 올림</span>' : '') +
-        '<span class="pub-row__path num"></span>';
-      row.querySelector('.pub-row__name').textContent = p.student.name;
-      row.querySelector('.pub-row__cls').textContent = p.student.className || '';
-      row.querySelector('.pub-row__path').textContent = p.path;
-      frag.appendChild(row);
+      var key = (p.student.className || '').trim() || '(반 없음)';
+      if (!(key in index)) { index[key] = groups.length; groups.push({ name: key, rows: [] }); }
+      groups[index[key]].rows.push(p);
+    });
+
+    var frag = document.createDocumentFragment();
+
+    groups.forEach(function (g) {
+      if (groups.length > 1) {
+        var head = document.createElement('div');
+        head.className = 'pub-group';
+        head.innerHTML = '<span class="pub-group__name"></span>' +
+                         '<span class="pub-group__count">' + g.rows.length + '명</span>';
+        head.querySelector('.pub-group__name').textContent = g.name;
+        frag.appendChild(head);
+      }
+
+      g.rows.forEach(function (p) {
+        var row = document.createElement('div');
+        row.className = 'pub-row';
+        row.innerHTML =
+          '<span class="pub-row__name"></span>' +
+          (groups.length > 1 ? '' : '<span class="pub-row__cls"></span>') +
+          (p.republish ? '<span class="pub-row__tag">다시 올림</span>' : '') +
+          '<span class="pub-row__path num"></span>';
+        row.querySelector('.pub-row__name').textContent = p.student.name;
+        var cls = row.querySelector('.pub-row__cls');
+        if (cls) cls.textContent = p.student.className || '';
+        row.querySelector('.pub-row__path').textContent = p.path;
+        frag.appendChild(row);
+      });
     });
     host.appendChild(frag);
 
     var again = pending.filter(function (p) { return p.republish; }).length;
-    $('#pubInfo').textContent = pending.length + '명' +
+    $('#pubInfo').textContent =
+      (groups.length > 1 ? groups.length + '개 반 ' : '') + pending.length + '명' +
       (again ? ' (그중 ' + again + '명은 다시 올림 — 링크는 그대로)' : '');
 
     refreshPublishButton();
