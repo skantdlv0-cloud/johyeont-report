@@ -898,6 +898,94 @@ dialog.modal--wide { width: min(680px, calc(100vw - 24px)); }
 }
 
 /* ============================================================
+   ③ 발행 탭
+   ============================================================ */
+
+.howto {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 10px 12px;
+}
+.howto summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-mid);
+}
+.howto__list {
+  margin: 10px 0 2px 18px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--ink);
+}
+.howto__list code {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+.pub-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 7px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+.pub-row__name { font-weight: 800; color: var(--ink-deep); flex: 0 0 auto; }
+.pub-row__cls  { font-size: 12px; color: var(--ink-light); }
+.pub-row__tag {
+  font-size: 11px; font-weight: 700;
+  background: #FFF6E8; color: #97701F;
+  border: 1px solid #F2E2C2; border-radius: 999px; padding: 1px 8px;
+}
+.pub-row__path {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--ink-light);
+  word-break: break-all;
+}
+.pub-row__link {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--lav);
+  word-break: break-all;
+  text-decoration: none;
+}
+.pub-row__link:hover { text-decoration: underline; }
+
+.progress { margin-top: 14px; }
+.progress__bar {
+  height: 8px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress__fill {
+  height: 100%;
+  width: 0;
+  background: var(--grad-strong);
+  border-radius: 999px;
+  transition: width .25s ease;
+}
+.progress__label {
+  margin-top: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-mid);
+}
+
+/* ============================================================
    토스트
    ============================================================ */
 .toast-host {
