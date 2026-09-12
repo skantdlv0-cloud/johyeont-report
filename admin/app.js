@@ -186,10 +186,10 @@
     var visible = sortStudents(students).filter(matches);
 
     $('#brandCount').textContent = '학생 ' + students.length + '명';
-    $('#rosterHint').textContent = students.length
-      ? (filterText || filterClass ? visible.length + '명 표시 중 · 이 브라우저에만 저장됩니다'
-                                   : '이 브라우저에만 저장됩니다')
-      : '이 브라우저에만 저장됩니다';
+    $('#rosterHint').textContent =
+      (filterText || filterClass) && students.length
+        ? visible.length + '명 표시 중 · 서버에 저장되어 모든 기기에서 같이 보입니다'
+        : '서버에 저장되어 모든 기기에서 같이 보입니다';
 
     rosterList.textContent = '';
 
@@ -680,38 +680,23 @@
      명단 지우기
      ============================================================ */
 
-  $('#btnClearStudents').addEventListener('click', function () {
-    if (!students.length) { toast('지울 명단이 없습니다'); return; }
-
-    confirmAsk(
-      '명단 지우기',
-      '학생 ' + students.length + '명을 이 브라우저에서 모두 지웁니다. 되돌릴 수 없습니다. ' +
-      '백업을 먼저 내려받으셨나요?',
-      '모두 지우기'
-    ).then(function (ok) {
-      if (!ok) return;
-      Store.clearStudentsOnly();
-      students = [];
-      collapsed = {};
-      render();
-      toast('명단을 지웠습니다');
-    });
-  });
-
-  /* ---------- 이 기기에서 모든 정보 지우기 ---------- */
+  /* ---------- 이 기기 정리 (로그아웃 + 로컬 사본 삭제) ----------
+     서버 자료는 건드리지 않는다. 다시 로그인하면 그대로 보인다. */
 
   $('#btnClearAll').addEventListener('click', function () {
     var hasToken = !!Store.getToken();
 
     confirmAsk(
-      '이 기기에서 모든 정보 지우기',
-      '학생 명단(' + students.length + '명)과 학부모 연락처, ' +
-      (hasToken ? '깃허브 토큰, ' : '') +
-      '작성 중인 내용, 발송 기록을 이 브라우저에서 전부 지웁니다. ' +
-      '되돌릴 수 없습니다. 백업을 먼저 내려받으셨나요?',
-      '전부 지우기'
+      '이 기기에서 로그아웃하고 정리',
+      '이 브라우저에 남아 있는 로그인 상태' +
+      (hasToken ? '와 깃허브 토큰' : '') +
+      ', 내려받아 둔 사본을 지우고 로그아웃합니다. ' +
+      '서버의 학생 명단과 작성 내용은 그대로 남습니다.',
+      '정리하고 로그아웃'
     ).then(function (ok) {
       if (!ok) return;
+
+      Store.enableSync(false);      /* 정리 중에 빈 값이 서버로 새어 나가지 않게 */
       Store.clearAll();
       students = [];
       settings = {};
@@ -719,9 +704,11 @@
       filterText = '';
       filterClass = '';
       $('#searchInput').value = '';
-      pcNotice.hidden = false;          /* 안내도 처음 상태로 되돌린다 */
       render();
-      toast('이 기기의 정보를 모두 지웠습니다', 'good');
+
+      SB.signOut().then(function () {
+        location.reload();          /* 로그인 화면부터 다시 */
+      });
     });
   });
 

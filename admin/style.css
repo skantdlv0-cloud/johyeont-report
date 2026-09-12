@@ -939,6 +939,22 @@ dialog.modal--wide { width: min(680px, calc(100vw - 24px)); }
   .wrap { padding: 0 12px 56px; }
   .panel { padding: 15px 13px; border-radius: 12px; }
 
+  /* 좁은 화면에서는 도구 막대를 한 줄에 하나씩 쌓는다.
+     가로로 두면 검색창과 반 선택 칸이 서로 밀려 겹친다. */
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar > * { width: 100%; }
+  .toolbar .input,
+  .toolbar .select,
+  .toolbar .btn { width: 100%; min-height: 44px; }
+  .search { flex: 1 1 auto; min-width: 0; }
+
+  /* 제목 줄도 좁으면 버튼을 아래로 내린다 */
+  .panel__head { flex-wrap: wrap; }
+  .panel__head .spacer { display: none; }
+  .panel__head > .btn { width: 100%; min-height: 44px; margin-top: 2px; }
+  .panel__title { flex: 1 1 auto; }
+  .panel__hint { flex: 1 1 100%; }
+
   .roster, .roster tbody, .roster tr, .roster td { display: block; width: 100%; }
   .roster thead { display: none; }
   .roster tr {

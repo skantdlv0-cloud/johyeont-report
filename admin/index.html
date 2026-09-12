@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" as="style" crossorigin
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
-<link rel="stylesheet" href="style.css?v=20260912a">
+<link rel="stylesheet" href="style.css?v=20260912b">
 </head>
 <body class="is-locked">
 
@@ -88,9 +88,9 @@
     <span class="notice__icon" aria-hidden="true">⚠️</span>
     <div class="notice__body">
       <b>공용 PC에서는 사용하지 마세요.</b>
-      학생 명단과 학부모 연락처, 깃허브 토큰이 이 브라우저에 저장됩니다.
-      본인 노트북에서만 쓰시고, 남의 컴퓨터에서 열었다면
-      ③ 발행 탭의 <b>[명단 지우기]</b>·<b>[토큰 지우기]</b>로 반드시 지워 주세요.
+      로그인 상태와 깃허브 토큰이 이 브라우저에 남습니다.
+      남의 컴퓨터에서 열었다면 ① 명단 탭 맨 아래
+      <b>[이 기기에서 로그아웃하고 정리]</b>를 꼭 눌러 주세요.
     </div>
     <button class="notice__close" id="publicPcClose" type="button" aria-label="닫기">×</button>
   </div>
@@ -103,7 +103,7 @@
     <div class="panel">
       <div class="panel__head">
         <h2 class="panel__title">학생 명단</h2>
-        <p class="panel__hint" id="rosterHint">이 브라우저에만 저장됩니다</p>
+        <p class="panel__hint" id="rosterHint">서버에 저장되어 모든 기기에서 같이 보입니다</p>
         <div class="spacer"></div>
         <button class="btn btn--primary" id="btnAddStudent" type="button">+ 학생 추가</button>
       </div>
@@ -139,8 +139,8 @@
     <!-- 백업 -->
     <div class="panel">
       <div class="panel__head">
-        <h2 class="panel__title">기기 이전 백업</h2>
-        <p class="panel__hint">노트북·조교가 바뀌거나, 폰에서 이어서 쓸 때</p>
+        <h2 class="panel__title">백업 파일</h2>
+        <p class="panel__hint">서버에 문제가 생겼을 때를 대비한 사본입니다</p>
       </div>
 
       <div class="toolbar" style="margin-bottom:14px">
@@ -157,10 +157,11 @@
       <div class="notice notice--info">
         <span class="notice__icon" aria-hidden="true">📦</span>
         <div class="notice__body">
-          백업에 담기는 것 — <b>학생 명단 · 설정 · 발송 기록 · 발행 이력 · 코멘트 상용구</b><br>
-          담기지 <b>않는</b> 것 — <b>깃허브 토큰</b>.
-          토큰은 기기마다 따로 발급하고 따로 폐기하는 것이라, 파일에 담으면
-          폐기한 뒤에도 파일에 남아 위험합니다. 새 기기에서는 토큰을 새로 발급해 넣으세요.
+          <b>기기를 옮길 때는 이 파일이 필요 없습니다.</b>
+          새 기기에서 로그인만 하면 서버에서 그대로 내려옵니다.<br>
+          이 백업은 <b>서버가 멈추거나 자료가 지워졌을 때</b> 되돌리기 위한 사본입니다.
+          담기는 것 — 학생 명단 · 발송 기록 · 발행 이력 · 코멘트 상용구.
+          담기지 <b>않는</b> 것 — <b>깃허브 토큰</b>(기기마다 따로 발급·폐기하므로).
         </div>
       </div>
 
@@ -177,22 +178,22 @@
     <!-- 위험 구역 -->
     <div class="panel">
       <div class="panel__head">
-        <h2 class="panel__title">이 기기에서 지우기</h2>
-        <p class="panel__hint">되돌릴 수 없습니다. 먼저 백업을 내려받으세요</p>
+        <h2 class="panel__title">이 기기 정리</h2>
+        <p class="panel__hint">조교를 교체하거나 노트북을 넘길 때</p>
       </div>
 
       <div class="toolbar" style="margin-bottom:12px">
-        <button class="btn btn--danger" id="btnClearStudents" type="button">명단만 지우기</button>
         <button class="btn btn--danger" id="btnClearAll" type="button">
-          이 기기에서 모든 정보 지우기
+          이 기기에서 로그아웃하고 정리
         </button>
       </div>
 
       <p class="panel__hint">
-        <b>모든 정보 지우기</b>는 학생 명단, 학부모 연락처, 깃허브 토큰, 작성 중인 내용,
-        발송 기록까지 이 브라우저에서 전부 삭제합니다.
-        조교를 교체하거나 노트북을 넘길 때 누르세요.
-        <b>깃허브에 이미 올라간 레포트 링크는 그대로 살아 있습니다.</b>
+        이 브라우저에 남아 있는 <b>로그인 상태 · 깃허브 토큰 · 내려받아 둔 사본</b>을 지우고
+        로그아웃합니다.<br>
+        <b>서버의 학생 명단과 작성 내용은 지워지지 않습니다.</b>
+        다시 로그인하면 그대로 보입니다. 학생을 정말 지우려면 위 목록에서 한 명씩 삭제하세요.
+        깃허브에 올라간 레포트 링크도 그대로 살아 있습니다.
       </p>
     </div>
 
@@ -530,12 +531,12 @@
 <div class="toast-host" id="toastHost" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
-<script src="supabase.js?v=20260912a"></script>
-<script src="db.js?v=20260912a"></script>
-<script src="store.js?v=20260912a"></script>
-<script src="report.js?v=20260912a"></script>
-<script src="app.js?v=20260912a"></script>
-<script src="write.js?v=20260912a"></script>
-<script src="auth.js?v=20260912a"></script>
+<script src="supabase.js?v=20260912b"></script>
+<script src="db.js?v=20260912b"></script>
+<script src="store.js?v=20260912b"></script>
+<script src="report.js?v=20260912b"></script>
+<script src="app.js?v=20260912b"></script>
+<script src="write.js?v=20260912b"></script>
+<script src="auth.js?v=20260912b"></script>
 </body>
 </html>
