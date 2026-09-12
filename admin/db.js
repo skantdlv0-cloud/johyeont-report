@@ -50,6 +50,53 @@
     };
   }
 
+  /* ---------- 내가 만든 칸 (field_defs) ---------- */
+
+  function toDbField(f) {
+    return {
+      id: f.id,
+      key: f.key,
+      label: f.label || '',
+      type: f.type || 'text',
+      options: f.options || [],
+      show_in_table: f.showInTable !== false,
+      sort_order: f.sortOrder || 0
+    };
+  }
+
+  function fromDbField(r) {
+    return {
+      id: r.id,
+      key: r.key,
+      label: r.label || '',
+      type: r.type || 'text',
+      options: r.options || [],
+      /* 예전 행에는 show_in_table 이 없다. 없으면 보이는 쪽으로 본다. */
+      showInTable: r.show_in_table !== false,
+      sortOrder: r.sort_order || 0
+    };
+  }
+
+  /* 칸 목록 전체 맞추기.
+     학생 명단과 달리 여기서는 빈 목록도 허용한다.
+     칸을 다 지우는 것은 자연스러운 조작이고, 지워도 학생 자료(extra)는 남는다. */
+  function syncFieldDefs(list) {
+    var c = sb();
+    var rows = (list || []).map(toDbField);
+
+    if (!rows.length) {
+      return c.from('field_defs')
+        .delete().neq('id', '00000000-0000-0000-0000-000000000000').then(check);
+    }
+
+    return c.from('field_defs').upsert(rows, { onConflict: 'id' })
+      .then(check)
+      .then(function () {
+        var ids = rows.map(function (r) { return r.id; });
+        return c.from('field_defs').delete().not('id', 'in', '(' + ids.join(',') + ')').then(check);
+      });
+  }
+
   /* ---------- 주간 입력 ---------- */
 
   function toDbEntry(weekStart, studentId, e) {
@@ -143,7 +190,7 @@
         entries: entries,
         sent: sent,
         published: published,
-        fieldDefs: res[6].data
+        fieldDefs: res[6].data.map(fromDbField)
       };
     });
   }
@@ -334,7 +381,8 @@
     publishedWeeks: publishedWeeks,
     weekSendData: weekSendData,
     toDbStudent: toDbStudent,
-    fromDbStudent: fromDbStudent
+    fromDbStudent: fromDbStudent,
+    syncFieldDefs: syncFieldDefs
   };
 
 })(window);

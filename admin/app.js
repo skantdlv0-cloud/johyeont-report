@@ -99,6 +99,7 @@
      ============================================================ */
 
   var students = Store.getStudents();
+  var fields = Store.getFieldDefs();  /* 내가 만든 칸 */
   var collapsed = {};                 /* 반별 접힘 상태 */
   var filterText = '';
   var filterClass = '';
@@ -116,8 +117,10 @@
   function matches(s) {
     if (filterClass && (s.className || '') !== filterClass) return false;
     if (!filterText) return true;
-    var hay = [s.name, s.slug, s.school, s.grade, s.className].join(' ').toLowerCase();
-    return hay.indexOf(filterText) !== -1;
+    var hay = [s.name, s.slug, s.school, s.grade, s.className];
+    /* 내가 만든 칸에 적어 둔 내용도 같이 찾는다 */
+    fields.forEach(function (f) { hay.push(Store.fieldText(s, f)); });
+    return hay.join(' ').toLowerCase().indexOf(filterText) !== -1;
   }
 
   /* ---------- 행 하나 ---------- */
@@ -153,13 +156,23 @@
     });
   }
 
+  /* 표에 열로 보이기로 한 칸만 추린다 */
+  function tableFields() {
+    return fields.filter(function (f) { return f.showInTable !== false; });
+  }
+
   function rowHtml(s) {
+    var extra = tableFields().map(function () {
+      return '<td class="roster__extra"><span class="roster__extraval"></span></td>';
+    }).join('');
+
     return '' +
       '<td data-label="이름"><span class="roster__name"></span></td>' +
       '<td data-label="로마자"><span class="roster__slug"></span></td>' +
       '<td data-label="학교"></td>' +
       '<td data-label="학년"></td>' +
       '<td data-label="연락처">' + phoneCellHtml(s) + '</td>' +
+      extra +
       '<td class="roster__actions">' +
         '<button class="btn btn--sm" data-act="edit">수정</button>' +
         '<button class="btn btn--sm btn--danger" data-act="del">삭제</button>' +
@@ -179,6 +192,18 @@
     tds[2].setAttribute('data-label', '학교');
     tds[3].setAttribute('data-label', '학년');
     fillPhoneCell(tds[4], s);
+
+    tableFields().forEach(function (f, i) {
+      var td = tds[5 + i];
+      if (!td) return;
+      td.setAttribute('data-label', f.label);
+      var v = Store.fieldText(s, f);
+      var box = td.querySelector('.roster__extraval');
+      box.textContent = v || '-';
+      box.classList.toggle('is-empty', !v);
+      td.classList.toggle('is-empty', !v);   /* 휴대폰에서는 빈 줄을 숨긴다 */
+      if (f.type === 'checkbox') box.classList.add('roster__extraval--mark');
+    });
   }
 
   /* ---------- 전체 그리기 ---------- */
@@ -240,10 +265,15 @@
 
       var table = document.createElement('table');
       table.className = 'roster';
+      var headExtra = tableFields().map(function () { return '<th></th>'; }).join('');
       table.innerHTML =
         '<thead><tr>' +
-          '<th>이름</th><th>로마자</th><th>학교</th><th>학년</th><th>연락처</th><th></th>' +
+          '<th>이름</th><th>로마자</th><th>학교</th><th>학년</th><th>연락처</th>' +
+          headExtra + '<th></th>' +
         '</tr></thead><tbody></tbody>';
+      /* 칸 이름은 textContent 로 넣는다. 사용자가 지은 이름이라 무엇이든 들어올 수 있다. */
+      var ths = table.querySelectorAll('thead th');
+      tableFields().forEach(function (f, i) { ths[5 + i].textContent = f.label; });
 
       var tbody = table.querySelector('tbody');
       g.rows.forEach(function (s) {
@@ -252,7 +282,11 @@
         tbody.appendChild(tr);
       });
 
-      wrap.appendChild(table);
+      /* 칸을 많이 만들면 표가 화면보다 넓어진다. 잘리지 않게 가로로 민다. */
+      var scroller = document.createElement('div');
+      scroller.className = 'roster-scroll';
+      scroller.appendChild(table);
+      wrap.appendChild(scroller);
       frag.appendChild(wrap);
     });
 
@@ -381,6 +415,118 @@
     box.classList.toggle('is-on', !!msg);
   }
 
+  /* ---------- 학생 모달 안의 '내가 만든 칸' ---------- */
+
+  /* 칸 하나를 입력 요소로 그린다. 값은 넣지 않고 뒤에서 채운다(특수문자 안전). */
+  function extraFieldNode(f) {
+    var wrap = document.createElement('label');
+    wrap.className = 'field';
+    wrap.dataset.key = f.key;
+
+    var lab = document.createElement('span');
+    lab.className = 'field__label';
+    lab.textContent = f.label;
+    var opt = document.createElement('span');
+    opt.className = 'field__opt';
+    opt.textContent = '선택';
+    lab.appendChild(document.createTextNode(' '));
+    lab.appendChild(opt);
+
+    var input;
+    if (f.type === 'textarea') {
+      input = document.createElement('textarea');
+      input.className = 'textarea';
+    } else if (f.type === 'select') {
+      input = document.createElement('select');
+      input.className = 'select';
+      var blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '(비움)';
+      input.appendChild(blank);
+      (f.options || []).forEach(function (o) {
+        var el = document.createElement('option');
+        el.value = o; el.textContent = o;
+        input.appendChild(el);
+      });
+    } else if (f.type === 'checkbox') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      wrap.className = 'check-line';
+      wrap.textContent = '';
+      wrap.appendChild(input);
+      var t = document.createElement('span');
+      t.textContent = f.label;
+      wrap.appendChild(t);
+      input.dataset.role = 'extra';
+      return wrap;
+    } else if (f.type === 'date') {
+      input = document.createElement('input');
+      input.className = 'input';
+      input.type = 'date';
+    } else {
+      input = document.createElement('input');
+      input.className = 'input';
+      input.type = 'text';
+      input.autocomplete = 'off';
+    }
+
+    input.dataset.role = 'extra';
+    wrap.appendChild(lab);
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function renderExtraFields(s) {
+    var host = $('#extraFields');
+    host.textContent = '';
+    if (!fields.length) return;
+
+    var head = document.createElement('div');
+    head.className = 'extra-head';
+    head.innerHTML = '<span class="extra-head__title">내가 만든 칸</span>';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn--sm btn--ghost';
+    btn.id = 'btnFieldsFromStudent';
+    btn.textContent = '칸 관리';
+    head.appendChild(btn);
+    host.appendChild(head);
+
+    var grid = document.createElement('div');
+    grid.className = 'grid2';
+    fields.forEach(function (f) {
+      var node = extraFieldNode(f);
+      if (f.type === 'textarea') node.classList.add('grid2__full');
+      var input = node.querySelector('[data-role="extra"]');
+      var v = s ? Store.fieldValue(s, f) : '';
+      if (f.type === 'checkbox') input.checked = !!v;
+      else input.value = v == null ? '' : String(v);
+      grid.appendChild(node);
+    });
+    host.appendChild(grid);
+  }
+
+  /* 모달에 적힌 값을 extra 객체로 모은다.
+     지금 없는 칸(나중에 지운 칸)에 적혀 있던 값은 건드리지 않고 그대로 둔다.
+     칸을 잘못 지웠다가 다시 만들 때를 위한 것이다. */
+  function collectExtra(s) {
+    var out = {};
+    var known = {};
+    fields.forEach(function (f) { known[f.key] = true; });
+    Object.keys((s && s.extra) || {}).forEach(function (k) {
+      if (!known[k]) out[k] = s.extra[k];
+    });
+    fields.forEach(function (f) {
+      var wrap = $('#extraFields [data-key="' + f.key + '"]');
+      if (!wrap) return;
+      var input = wrap.querySelector('[data-role="extra"]');
+      if (!input) return;
+      if (f.type === 'checkbox') { if (input.checked) out[f.key] = true; return; }
+      var v = String(input.value || '').trim();
+      if (v) out[f.key] = v;
+    });
+    return out;
+  }
+
   function openStudentModal(s) {
     editingId = s ? s.id : null;
     slugTouched = !!s;
@@ -402,6 +548,8 @@
       $('#fSchool').value = settings.lastSchool || '';
       $('#fParentTitle').value = settings.lastParentTitle || '';
     }
+
+    renderExtraFields(s);
 
     showStudentError('');
     studentModal.showModal();
@@ -476,6 +624,7 @@
       parentTitle: $('#fParentTitle').value.trim(),
       parentPhone: phone,
       parentPhone2: phone2,
+      extra: collectExtra(editingId ? students.find(function (x) { return x.id === editingId; }) : null),
       createdAt: editingId
         ? (students.find(function (x) { return x.id === editingId; }) || {}).createdAt || Date.now()
         : Date.now()
@@ -494,6 +643,238 @@
     studentModal.close();
     render();
     toast(editingId ? rec.name + ' 학생을 수정했습니다' : rec.name + ' 학생을 추가했습니다', 'good');
+  });
+
+  /* ============================================================
+     칸 관리 — 내가 만든 칸을 추가·수정·이동·삭제
+     ============================================================ */
+
+  var fieldsModal    = $('#fieldsModal');
+  var fieldEditModal = $('#fieldEditModal');
+  var editingFieldId = null;
+
+  function typeName(t) {
+    var hit = Store.FIELD_TYPES.find(function (x) { return x.type === t; });
+    return hit ? hit.name : t;
+  }
+
+  /* 이 칸을 실제로 쓰고 있는 학생 수 — 지우기 전에 알려 준다 */
+  function usedCount(f) {
+    return students.filter(function (s) {
+      var v = (s.extra || {})[f.key];
+      return v !== undefined && v !== '' && v !== false;
+    }).length;
+  }
+
+  function renderFieldList() {
+    var host = $('#fieldList');
+    host.textContent = '';
+
+    $('#fieldsCount').textContent = fields.length
+      ? fields.length + '개 · 표에 보이는 칸 ' +
+        fields.filter(function (f) { return f.showInTable !== false; }).length + '개'
+      : '';
+
+    if (!fields.length) {
+      host.innerHTML =
+        '<div class="empty-state">아직 만든 칸이 없습니다.<br>' +
+        '<b>+ 칸 추가</b>로 시험 범위·수업 진도 같은 칸을 만들어 보세요.</div>';
+      return;
+    }
+
+    fields.forEach(function (f, i) {
+      var row = document.createElement('div');
+      row.className = 'field-row';
+      row.dataset.id = f.id;
+      row.innerHTML =
+        '<div class="field-row__main">' +
+          '<span class="field-row__label"></span>' +
+          '<span class="field-row__meta"></span>' +
+        '</div>' +
+        '<div class="field-row__acts">' +
+          '<button class="btn btn--sm btn--ghost" type="button" data-fact="up"' +
+            (i === 0 ? ' disabled' : '') + ' aria-label="위로">↑</button>' +
+          '<button class="btn btn--sm btn--ghost" type="button" data-fact="down"' +
+            (i === fields.length - 1 ? ' disabled' : '') + ' aria-label="아래로">↓</button>' +
+          '<button class="btn btn--sm" type="button" data-fact="edit">수정</button>' +
+          '<button class="btn btn--sm btn--danger" type="button" data-fact="del">삭제</button>' +
+        '</div>';
+
+      row.querySelector('.field-row__label').textContent = f.label;
+
+      var meta = [typeName(f.type)];
+      if (f.type === 'select' && (f.options || []).length) {
+        meta.push((f.options || []).slice(0, 4).join('/') +
+                  ((f.options || []).length > 4 ? '…' : ''));
+      }
+      meta.push(f.showInTable !== false ? '표에 보임' : '표에 숨김');
+      var n = usedCount(f);
+      if (n) meta.push(n + '명 작성됨');
+      row.querySelector('.field-row__meta').textContent = meta.join(' · ');
+
+      host.appendChild(row);
+    });
+  }
+
+  function showFieldEditError(msg) {
+    var box = $('#fieldEditError');
+    box.textContent = msg || '';
+    box.classList.toggle('is-on', !!msg);
+  }
+
+  /* 칸 종류 드롭다운은 Store 의 목록에서 한 번만 만든다 */
+  (function buildTypeSelect() {
+    var sel = $('#fdType');
+    Store.FIELD_TYPES.forEach(function (t) {
+      var o = document.createElement('option');
+      o.value = t.type; o.textContent = t.name;
+      sel.appendChild(o);
+    });
+  })();
+
+  function syncTypeUi() {
+    var t = $('#fdType').value;
+    var hit = Store.FIELD_TYPES.find(function (x) { return x.type === t; });
+    $('#fdTypeHint').textContent = hit ? hit.hint : '';
+    $('#fdOptionsWrap').hidden = t !== 'select';
+    /* 여러 줄 글은 표에 넣으면 줄이 넘쳐서, 새로 만들 때는 꺼 둔 채로 시작한다 */
+    if (t === 'textarea' && editingFieldId === null) $('#fdShowInTable').checked = false;
+  }
+  $('#fdType').addEventListener('change', syncTypeUi);
+
+  function openFieldEdit(f) {
+    editingFieldId = f ? f.id : null;
+    $('#fieldEditTitle').textContent = f ? '칸 수정' : '칸 추가';
+    $('#fdLabel').value = f ? (f.label || '') : '';
+    $('#fdType').value  = f ? (f.type || 'text') : 'text';
+    $('#fdOptions').value = f && Array.isArray(f.options) ? f.options.join('\n') : '';
+    $('#fdShowInTable').checked = f ? f.showInTable !== false : true;
+    syncTypeUi();
+    showFieldEditError('');
+    fieldEditModal.showModal();
+    setTimeout(function () { $('#fdLabel').focus(); }, 30);
+  }
+
+  function saveFields(next) {
+    fields = next;
+    Store.saveFieldDefs(fields);
+    fields = Store.getFieldDefs();     /* 순서 번호가 다시 매겨진 것을 받아 온다 */
+    renderFieldList();
+    render();                          /* 명단 표의 열도 같이 바뀐다 */
+    window.dispatchEvent(new CustomEvent('jt:fields'));   /* 작성 탭이 따라 바뀐다 */
+  }
+
+  $('#btnManageFields').addEventListener('click', function () {
+    renderFieldList();
+    fieldsModal.showModal();
+  });
+
+  $('#btnFieldAdd').addEventListener('click', function () { openFieldEdit(null); });
+  $('#btnFieldEditCancel').addEventListener('click', function () { fieldEditModal.close(); });
+
+  /* 학생 수정 창에서 바로 칸 관리로 */
+  $('#extraFields').addEventListener('click', function (e) {
+    if (!e.target.closest('#btnFieldsFromStudent')) return;
+    renderFieldList();
+    fieldsModal.showModal();
+  });
+
+  $('#fieldList').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-fact]');
+    if (!btn) return;
+    var row = btn.closest('.field-row');
+    var id = row && row.dataset.id;
+    var i = fields.findIndex(function (f) { return f.id === id; });
+    if (i < 0) return;
+
+    var act = btn.dataset.fact;
+    var next = fields.slice();
+
+    if (act === 'up' && i > 0) {
+      next.splice(i - 1, 0, next.splice(i, 1)[0]);
+      saveFields(next);
+
+    } else if (act === 'down' && i < next.length - 1) {
+      next.splice(i + 1, 0, next.splice(i, 1)[0]);
+      saveFields(next);
+
+    } else if (act === 'edit') {
+      openFieldEdit(fields[i]);
+
+    } else if (act === 'del') {
+      var f = fields[i];
+      var n = usedCount(f);
+      confirmAsk(
+        '‘' + f.label + '’ 칸을 지울까요?',
+        n ? n + '명이 적어 둔 내용이 화면에서 사라집니다. (다시 만들어도 살아나지 않습니다)'
+          : '아직 아무도 적지 않은 칸입니다.',
+        '지우기'
+      ).then(function (ok) {
+        if (!ok) return;
+        next.splice(i, 1);
+        saveFields(next);
+        toast('‘' + f.label + '’ 칸을 지웠습니다');
+      });
+    }
+  });
+
+  $('#fieldEditForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    var label = $('#fdLabel').value.trim();
+    var type  = $('#fdType').value;
+    var opts  = $('#fdOptions').value.split('\n')
+      .map(function (x) { return x.trim(); })
+      .filter(function (x, i2, arr) { return x && arr.indexOf(x) === i2; });
+
+    if (!label) { showFieldEditError('칸 이름을 적어 주세요.'); return; }
+
+    var dup = fields.find(function (f) {
+      return f.label === label && f.id !== editingFieldId;
+    });
+    if (dup) {
+      showFieldEditError('‘' + label + '’ 칸이 이미 있습니다. 다른 이름을 적어 주세요.');
+      return;
+    }
+
+    if (type === 'select' && !opts.length) {
+      showFieldEditError('선택지를 한 줄에 하나씩 적어 주세요.');
+      return;
+    }
+
+    var next = fields.slice();
+    var i = next.findIndex(function (f) { return f.id === editingFieldId; });
+
+    if (i >= 0) {
+      /* key 는 그대로 둔다. 이름만 바꿔도 학생이 적어 둔 값이 따라온다. */
+      next[i] = {
+        id: next[i].id, key: next[i].key,
+        label: label, type: type, options: opts,
+        showInTable: $('#fdShowInTable').checked,
+        sortOrder: next[i].sortOrder
+      };
+    } else {
+      next.push({
+        id: Store.newId(),
+        key: Store.newFieldKey(next),
+        label: label, type: type, options: opts,
+        showInTable: $('#fdShowInTable').checked,
+        sortOrder: next.length
+      });
+    }
+
+    saveFields(next);
+    fieldEditModal.close();
+
+    /* 학생 수정 창이 열려 있으면 칸이 바로 보이게 다시 그린다 */
+    if (studentModal.open) {
+      renderExtraFields(editingId
+        ? students.find(function (x) { return x.id === editingId; })
+        : null);
+    }
+
+    toast(i >= 0 ? '‘' + label + '’ 칸을 고쳤습니다'
+                 : '‘' + label + '’ 칸을 만들었습니다', 'good');
   });
 
   /* ============================================================
@@ -657,6 +1038,7 @@
     function apply() {
       Store.restorePayload(payload);
       students = Store.getStudents();
+      fields = Store.getFieldDefs();
       settings = Store.read(Store.KEYS.settings, {});
       collapsed = {};
       filterText = '';
@@ -760,6 +1142,7 @@
   /* 서버에서 다 받아온 뒤 화면을 새로 그린다 */
   window.addEventListener('jt:loaded', function () {
     students = Store.getStudents();
+    fields = Store.getFieldDefs();
     settings = Store.read(Store.KEYS.settings, {});
     collapsed = {};
     collapseIfCrowded();

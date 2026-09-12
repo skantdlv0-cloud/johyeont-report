@@ -13,7 +13,7 @@
 
   /* 화면 아래에 표시된다. 배포 후 옛 파일이 캐시로 남았는지 눈으로 확인하는 용도.
      index.html 의 ?v= 값과 같아야 한다. */
-  var APP_VERSION = '20260912d';
+  var APP_VERSION = '20260912e';
 
   var CONFIG = {
     url: 'https://usejvhhxmnwdnzyergpl.supabase.co',

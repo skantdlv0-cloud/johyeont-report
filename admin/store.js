@@ -19,7 +19,8 @@
     snippets:  'jt.snippets',
     sent:      'jt.sent',
     token:     'jt.token',
-    settings:  'jt.settings'
+    settings:  'jt.settings',
+    fieldDefs: 'jt.fielddefs'   /* 명단에 내가 추가한 칸 */
   };
 
   /* ---------- localStorage 안전 래퍼 ----------
@@ -92,6 +93,9 @@
 
     } else if (key === KEYS.draft) {
       queueSync('draft', 800, function () { return pushDraft(value); });
+
+    } else if (key === KEYS.fieldDefs) {
+      queueSync('fieldDefs', 500, function () { return global.DB.syncFieldDefs(value); });
 
     } else if (key === KEYS.published) {
       /* 발행은 D단계에서 건별로 직접 보낸다 */
@@ -257,6 +261,71 @@
     saveStudents(getStudents().filter(function (x) { return x.id !== id; }));
   }
 
+  /* ---------- 내가 만든 칸 ----------
+     칸 하나: { id, key, label, type, options[], showInTable, sortOrder }
+     학생의 값은 students[].extra[key] 에 들어간다. */
+
+  var FIELD_TYPES = [
+    { type: 'text',     name: '글자',      hint: '한 줄짜리 짧은 내용 (예: 시험 범위)' },
+    { type: 'textarea', name: '여러 줄 글', hint: '길게 적는 내용 (예: 수업 진도, 상담 기록)' },
+    { type: 'date',     name: '날짜',      hint: '달력에서 고르는 날짜 (예: 등록일)' },
+    { type: 'checkbox', name: '체크박스',   hint: '예/아니오 하나 (예: 교재 배부)' },
+    { type: 'select',   name: '선택지',    hint: '미리 정한 것 중 하나 (예: 상/중/하)' }
+  ];
+
+  function getFieldDefs() {
+    var list = read(KEYS.fieldDefs, []);
+    if (!Array.isArray(list)) return [];
+    return list.slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+  }
+
+  /* 저장할 때 순서를 0,1,2… 로 다시 매긴다. 중간에 하나 지워도 빈 번호가 남지 않는다. */
+  function saveFieldDefs(list) {
+    var clean = (list || []).map(function (f, i) {
+      return {
+        id: f.id,
+        key: f.key,
+        label: String(f.label || '').trim(),
+        type: f.type || 'text',
+        options: Array.isArray(f.options) ? f.options : [],
+        showInTable: f.showInTable !== false,
+        sortOrder: i
+      };
+    });
+    return write(KEYS.fieldDefs, clean);
+  }
+
+  /* 칸 이름은 한글이라 그대로 키로 쓸 수 없다(서버가 영문 키만 받는다).
+     이름을 바꿔도 학생이 적어 둔 값이 따라가야 하므로,
+     키는 만들 때 한 번 정하고 두 번 다시 바꾸지 않는다. */
+  function newFieldKey(existing) {
+    var used = {};
+    (existing || []).forEach(function (f) { used[f.key] = true; });
+    for (var i = 0; i < 500; i++) {
+      var k = 'f_' + Date.now().toString(36) + '_' + i.toString(36);
+      if (!used[k]) return k;
+    }
+    return 'f_' + Math.random().toString(36).slice(2, 10);
+  }
+
+  /* 칸을 지워도 학생이 적어 둔 값은 남겨 둔다.
+     실수로 지웠을 때 같은 이름으로 다시 만들면 살아나지 않지만,
+     지우자마자 44명분 기록이 사라지는 것보다는 낫다. */
+  function fieldValue(student, def) {
+    if (!student || !def) return '';
+    var v = (student.extra || {})[def.key];
+    return v == null ? '' : v;
+  }
+
+  /* 화면에 보여 줄 글자로 바꾼다 */
+  function fieldText(student, def) {
+    var v = fieldValue(student, def);
+    if (def.type === 'checkbox') return v ? '✓' : '';
+    return String(v);
+  }
+
   /* 반 목록 — 등장 순서를 유지하되 이름순으로 정렬 */
   function getClasses() {
     var seen = {};
@@ -318,6 +387,7 @@
       sent:      read(KEYS.sent, {}),
       published: read(KEYS.published, {}),
       snippets:  read(KEYS.snippets, []),
+      fieldDefs: read(KEYS.fieldDefs, []),
       draft:     read(KEYS.draft, null),
       queue:     read(KEYS.queue, {}),
       history:   read(KEYS.history, {})
@@ -401,6 +471,7 @@
     write(KEYS.sent,      p.sent      || {});
     write(KEYS.published, p.published || {});
     write(KEYS.snippets,  p.snippets  || []);
+    write(KEYS.fieldDefs, p.fieldDefs || []);
     write(KEYS.queue,     p.queue     || {});
     write(KEYS.history,   p.history   || {});
     if (p.draft) write(KEYS.draft, p.draft); else remove(KEYS.draft);
@@ -484,11 +555,15 @@
       serverWasEmpty = !serverHasData;
 
       if (!serverHasData && localHasData) {
+        /* 명단은 이 기기 것을 지키되, 칸 정의는 서버에 있으면 받아 둔다.
+           칸이 없으면 학생의 extra 값을 화면에 그릴 수가 없다. */
+        if ((d.fieldDefs || []).length) writeLocal(KEYS.fieldDefs, d.fieldDefs);
         return d;                      /* 이 기기 것을 지킨다 */
       }
 
       writeLocal(KEYS.students, d.students);
       writeLocal(KEYS.snippets, d.snippets);
+      writeLocal(KEYS.fieldDefs, d.fieldDefs || []);
       writeLocal(KEYS.sent, d.sent);
       writeLocal(KEYS.published, d.published);
 
@@ -561,6 +636,13 @@
     var snippets = getSnippets().map(function (s) {
       return { id: isUuid(s.id) ? s.id : newId(), text: s.text };
     });
+    var fields = getFieldDefs().map(function (f, i) {
+      return {
+        id: isUuid(f.id) ? f.id : newId(),
+        key: f.key, label: f.label, type: f.type,
+        options: f.options || [], showInTable: f.showInTable !== false, sortOrder: i
+      };
+    });
 
     /* 먼저 로컬을 새 id 로 바꿔 둔다. 중간에 실패해도 다시 시도할 수 있다. */
     writeLocal(KEYS.students, fixed);
@@ -568,12 +650,15 @@
     writeLocal(KEYS.sent, sent);
     writeLocal(KEYS.published, published);
     writeLocal(KEYS.snippets, snippets);
+    writeLocal(KEYS.fieldDefs, fields);
 
     var ids = fixed.map(function (s) { return s.id; });
-    var report = { students: fixed.length, entries: 0, commons: 0, snippets: snippets.length, sent: 0 };
+    var report = { students: fixed.length, entries: 0, commons: 0,
+                   snippets: snippets.length, fields: fields.length, sent: 0 };
 
     return global.DB.syncStudents(fixed)
       .then(function () { return global.DB.saveSnippets(snippets); })
+      .then(function () { return fields.length ? global.DB.syncFieldDefs(fields) : null; })
       .then(function () {
         if (!draft || !draft.weekStart) return null;
         var jobs = [];
@@ -659,6 +744,9 @@
     mmdd: mmdd, shortDate: shortDate,
 
     getSnippets: getSnippets, saveSnippets: saveSnippets,
+    getFieldDefs: getFieldDefs, saveFieldDefs: saveFieldDefs,
+    newFieldKey: newFieldKey, FIELD_TYPES: FIELD_TYPES,
+    fieldValue: fieldValue, fieldText: fieldText,
 
     getToken: getToken, saveToken: saveToken, clearToken: clearToken,
     clearAll: clearAll, clearStudentsOnly: clearStudentsOnly

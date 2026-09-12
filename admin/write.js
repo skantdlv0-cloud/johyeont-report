@@ -643,6 +643,7 @@
     $('#commentWho').textContent = (s ? s.name + ' 학생 ' : '') + '코멘트';
     $('#commentText').value = e.comment || '';
     updateCommentCount();
+    renderInfoBar();
     renderSnipBar();
     $('#commentWarn').classList.remove('is-on');
     commentModal.showModal();
@@ -713,6 +714,74 @@
     var cur = ta.value;
     ta.value = cur ? (cur.replace(/\s*$/, '') + '\n' + text) : text;
     ta.focus();
+    updateCommentCount();
+  });
+
+  /* ---------- 학생 정보 불러오기 ----------
+     명단에서 만든 칸(시험 범위·수업 진도 …)에 적어 둔 내용을
+     코멘트 창 위에 보여 주고, 누르면 코멘트에 넣는다.
+     값이 빈 칸은 보이지 않는다. */
+
+  function renderInfoBar() {
+    var host = $('#infoBar');
+    var defs = Store.getFieldDefs();
+    var s = students().find(function (x) { return x.id === commentTargetId; });
+
+    host.textContent = '';
+
+    var usable = defs.filter(function (f) {
+      if (f.type === 'checkbox') return false;      /* 넣을 글자가 없다 */
+      return String(Store.fieldValue(s, f) || '').trim() !== '';
+    });
+
+    if (!usable.length) { host.hidden = true; return; }
+
+    host.hidden = false;
+
+    var lab = document.createElement('span');
+    lab.className = 'info-bar__label';
+    lab.textContent = '학생 정보';
+    host.appendChild(lab);
+
+    usable.forEach(function (f) {
+      var v = String(Store.fieldValue(s, f)).trim();
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'info-chip';
+      b.dataset.key = f.key;
+      b.title = f.label + ': ' + v;
+
+      var n = document.createElement('span');
+      n.className = 'info-chip__name';
+      n.textContent = f.label;
+      var t = document.createElement('span');
+      t.className = 'info-chip__val';
+      t.textContent = v.replace(/\s+/g, ' ').slice(0, 24) + (v.length > 24 ? '…' : '');
+
+      b.appendChild(n);
+      b.appendChild(t);
+      host.appendChild(b);
+    });
+  }
+
+  /* 칩을 누르면 커서 자리에 값을 넣는다. 문장 중간에 끼워 쓰는 일이 많다. */
+  $('#infoBar').addEventListener('click', function (e) {
+    var b = e.target.closest('.info-chip');
+    if (!b) return;
+
+    var s = students().find(function (x) { return x.id === commentTargetId; });
+    var f = Store.getFieldDefs().find(function (x) { return x.key === b.dataset.key; });
+    if (!f) return;
+
+    var text = String(Store.fieldValue(s, f) || '').trim();
+    if (!text) return;
+
+    var ta = $('#commentText');
+    var a = ta.selectionStart, z = ta.selectionEnd;
+    ta.value = ta.value.slice(0, a) + text + ta.value.slice(z);
+    var pos = a + text.length;
+    ta.focus();
+    ta.setSelectionRange(pos, pos);
     updateCommentCount();
   });
 
