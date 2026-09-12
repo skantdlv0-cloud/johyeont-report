@@ -187,6 +187,32 @@ create table if not exists public.snippets (
 );
 
 
+-- ------------------------------------------------------------
+--  8. app_settings — 선생님·조교가 함께 쓰는 설정 (인사말 등)
+--     설정이 늘어도 줄만 추가한다. 표를 또 만들지 않는다.
+-- ------------------------------------------------------------
+create table if not exists public.app_settings (
+  key         text primary key,
+  value       jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now(),
+  updated_by  text not null default ''
+);
+
+drop trigger if exists app_settings_touch on public.app_settings;
+create trigger app_settings_touch before update on public.app_settings
+  for each row execute function public.touch_updated_at();
+
+insert into public.app_settings (key, value)
+values (
+  'greeting',
+  jsonb_build_object(
+    'sms',   E'안녕하세요 {호칭} 이번 주 레포트 보내드립니다^^\n{링크}',
+    'kakao', E'안녕하세요 {호칭} 이번 주 레포트 보내드립니다^^\n{링크}'
+  )
+)
+on conflict (key) do nothing;
+
+
 -- ============================================================
 --  RLS — 로그인한 사람만 읽고 쓴다
 --
@@ -194,20 +220,21 @@ create table if not exists public.snippets (
 --  anon(비로그인) 에게는 아무 정책도 주지 않으므로 전부 막힌다.
 -- ============================================================
 
-alter table public.students    enable row level security;
-alter table public.field_defs  enable row level security;
-alter table public.week_common enable row level security;
-alter table public.entries     enable row level security;
-alter table public.published   enable row level security;
-alter table public.sent        enable row level security;
-alter table public.snippets    enable row level security;
+alter table public.students     enable row level security;
+alter table public.field_defs   enable row level security;
+alter table public.week_common  enable row level security;
+alter table public.entries      enable row level security;
+alter table public.published    enable row level security;
+alter table public.sent         enable row level security;
+alter table public.snippets     enable row level security;
+alter table public.app_settings enable row level security;
 
 do $$
 declare
   t text;
 begin
   foreach t in array array[
-    'students','field_defs','week_common','entries','published','sent','snippets'
+    'students','field_defs','week_common','entries','published','sent','snippets','app_settings'
   ] loop
     execute format('drop policy if exists %I on public.%I', t || '_authenticated_all', t);
     execute format(
@@ -223,11 +250,11 @@ $$;
 --  확인 — 아래 두 쿼리 결과를 눈으로 본다
 -- ============================================================
 
--- (1) 7개 테이블 모두 rls_enabled = true 여야 한다
+-- (1) 8개 테이블 모두 rls_enabled = true 여야 한다
 select tablename, rowsecurity as rls_enabled
 from pg_tables
 where schemaname = 'public'
-  and tablename in ('students','field_defs','week_common','entries','published','sent','snippets')
+  and tablename in ('students','field_defs','week_common','entries','published','sent','snippets','app_settings')
 order by tablename;
 
 -- (2) 테이블마다 정책이 1개씩, roles = {authenticated} 여야 한다
