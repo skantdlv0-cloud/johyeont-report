@@ -20,7 +20,8 @@
     sent:      'jt.sent',
     token:     'jt.token',
     settings:  'jt.settings',
-    fieldDefs: 'jt.fielddefs'   /* 명단에 내가 추가한 칸 */
+    fieldDefs: 'jt.fielddefs',  /* 명단에 내가 추가한 칸 (학생 칸 · 반 칸) */
+    classInfo: 'jt.classinfo'   /* 반마다 적어 둔 값 */
   };
 
   /* ---------- localStorage 안전 래퍼 ----------
@@ -96,6 +97,9 @@
 
     } else if (key === KEYS.fieldDefs) {
       queueSync('fieldDefs', 500, function () { return global.DB.syncFieldDefs(value); });
+
+    } else if (key === KEYS.classInfo) {
+      queueSync('classInfo', 500, function () { return global.DB.syncClassInfo(value); });
 
     } else if (key === KEYS.published) {
       /* 발행은 D단계에서 건별로 직접 보낸다 */
@@ -262,8 +266,12 @@
   }
 
   /* ---------- 내가 만든 칸 ----------
-     칸 하나: { id, key, label, type, options[], showInTable, sortOrder }
-     학생의 값은 students[].extra[key] 에 들어간다. */
+     칸 하나: { id, key, label, type, options[], showInTable, scope, sortOrder }
+
+     scope 가 두 가지다.
+       'student' — 학생마다 따로 적는다. 값은 students[].extra[key]
+       'class'   — 반마다 한 번 적는다.  값은 classInfo[반이름][key]
+     키(key)는 두 쪽을 통틀어 겹치지 않는다. */
 
   var FIELD_TYPES = [
     { type: 'text',     name: '글자',      hint: '한 줄짜리 짧은 내용 (예: 시험 범위)' },
@@ -273,17 +281,27 @@
     { type: 'select',   name: '선택지',    hint: '미리 정한 것 중 하나 (예: 상/중/하)' }
   ];
 
-  function getFieldDefs() {
+  var SCOPES = {
+    student: { name: '학생 칸', desc: '학생마다 따로 적습니다' },
+    class:   { name: '반 칸',   desc: '반마다 한 번만 적으면 그 반 전체에 적용됩니다' }
+  };
+
+  function scopeOf(f) { return f && f.scope === 'class' ? 'class' : 'student'; }
+
+  /* scope 를 주면 그쪽 칸만, 안 주면 전부 돌려준다 */
+  function getFieldDefs(scope) {
     var list = read(KEYS.fieldDefs, []);
     if (!Array.isArray(list)) return [];
+    if (scope) list = list.filter(function (f) { return scopeOf(f) === scope; });
     return list.slice().sort(function (a, b) {
       return (a.sortOrder || 0) - (b.sortOrder || 0);
     });
   }
 
-  /* 저장할 때 순서를 0,1,2… 로 다시 매긴다. 중간에 하나 지워도 빈 번호가 남지 않는다. */
-  function saveFieldDefs(list) {
-    var clean = (list || []).map(function (f, i) {
+  /* 저장할 때 순서를 0,1,2… 로 다시 매긴다. 중간에 하나 지워도 빈 번호가 남지 않는다.
+     scope 를 주면 그쪽 칸만 이 목록으로 바꾸고, 다른 쪽은 건드리지 않는다. */
+  function saveFieldDefs(list, scope) {
+    function clean(f, i) {
       return {
         id: f.id,
         key: f.key,
@@ -291,18 +309,35 @@
         type: f.type || 'text',
         options: Array.isArray(f.options) ? f.options : [],
         showInTable: f.showInTable !== false,
+        scope: scopeOf(f),
         sortOrder: i
       };
-    });
-    return write(KEYS.fieldDefs, clean);
+    }
+
+    var next;
+    if (!scope) {
+      next = (list || []).map(clean);
+    } else {
+      var mine = (list || []).map(function (f) {
+        var c = clean(f, 0); c.scope = scope; return c;
+      });
+      var others = getFieldDefs().filter(function (f) { return scopeOf(f) !== scope; });
+      /* 순서는 scope 안에서만 센다 */
+      mine.forEach(function (f, i) { f.sortOrder = i; });
+      others.forEach(function (f, i) { f.sortOrder = i; });
+      next = others.concat(mine);
+    }
+    return write(KEYS.fieldDefs, next);
   }
 
   /* 칸 이름은 한글이라 그대로 키로 쓸 수 없다(서버가 영문 키만 받는다).
-     이름을 바꿔도 학생이 적어 둔 값이 따라가야 하므로,
-     키는 만들 때 한 번 정하고 두 번 다시 바꾸지 않는다. */
+     이름을 바꿔도 적어 둔 값이 따라가야 하므로,
+     키는 만들 때 한 번 정하고 두 번 다시 바꾸지 않는다.
+     학생 칸과 반 칸을 통틀어 겹치지 않게 만든다. */
   function newFieldKey(existing) {
     var used = {};
-    (existing || []).forEach(function (f) { used[f.key] = true; });
+    (existing || getFieldDefs()).forEach(function (f) { used[f.key] = true; });
+    getFieldDefs().forEach(function (f) { used[f.key] = true; });
     for (var i = 0; i < 500; i++) {
       var k = 'f_' + Date.now().toString(36) + '_' + i.toString(36);
       if (!used[k]) return k;
@@ -310,18 +345,45 @@
     return 'f_' + Math.random().toString(36).slice(2, 10);
   }
 
-  /* 칸을 지워도 학생이 적어 둔 값은 남겨 둔다.
+  /* ---------- 반 현황 ----------
+     { '운유1': { f_xxx: '값' }, … }
+     반 이름이 열쇠다. 명단에서 반 이름을 바꾸면 적어 둔 내용은 따라오지 않는다. */
+
+  function getClassInfo() {
+    var m = read(KEYS.classInfo, {});
+    return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
+  }
+
+  function saveClassInfo(map) {
+    return write(KEYS.classInfo, map || {});
+  }
+
+  /* 반 하나의 값만 갈아 끼운다 */
+  function setClassExtra(className, extra) {
+    var m = getClassInfo();
+    m[className] = extra || {};
+    return saveClassInfo(m);
+  }
+
+  function classExtra(className) {
+    return getClassInfo()[className] || {};
+  }
+
+  /* 칸을 지워도 적어 둔 값은 남겨 둔다.
      실수로 지웠을 때 같은 이름으로 다시 만들면 살아나지 않지만,
      지우자마자 44명분 기록이 사라지는 것보다는 낫다. */
-  function fieldValue(student, def) {
-    if (!student || !def) return '';
-    var v = (student.extra || {})[def.key];
+  function fieldValue(owner, def) {
+    if (!owner || !def) return '';
+    var bag = scopeOf(def) === 'class'
+      ? (typeof owner === 'string' ? classExtra(owner) : (owner.extra || owner))
+      : (owner.extra || {});
+    var v = bag[def.key];
     return v == null ? '' : v;
   }
 
   /* 화면에 보여 줄 글자로 바꾼다 */
-  function fieldText(student, def) {
-    var v = fieldValue(student, def);
+  function fieldText(owner, def) {
+    var v = fieldValue(owner, def);
     if (def.type === 'checkbox') return v ? '✓' : '';
     return String(v);
   }
@@ -388,6 +450,7 @@
       published: read(KEYS.published, {}),
       snippets:  read(KEYS.snippets, []),
       fieldDefs: read(KEYS.fieldDefs, []),
+      classInfo: read(KEYS.classInfo, {}),
       draft:     read(KEYS.draft, null),
       queue:     read(KEYS.queue, {}),
       history:   read(KEYS.history, {})
@@ -472,6 +535,7 @@
     write(KEYS.published, p.published || {});
     write(KEYS.snippets,  p.snippets  || []);
     write(KEYS.fieldDefs, p.fieldDefs || []);
+    write(KEYS.classInfo, p.classInfo || {});
     write(KEYS.queue,     p.queue     || {});
     write(KEYS.history,   p.history   || {});
     if (p.draft) write(KEYS.draft, p.draft); else remove(KEYS.draft);
@@ -545,10 +609,14 @@
      그때 서버(빈 값)로 덮어쓰면 옮길 자료가 사라진다.
      그래서 서버에 학생이 하나도 없으면 이 기기 내용을 그대로 둔다.
      대신 '서버로 올리기' 안내를 띄운다. */
+  var missingTables = [];
+  function serverMissing() { return missingTables.slice(); }
+
   function loadAll() {
     if (!global.DB) return Promise.reject(new Error('DB 모듈이 없습니다.'));
 
     return global.DB.loadAll().then(function (d) {
+      missingTables = d.missingTables || [];
       var serverHasData = d.students.length > 0;
       var localHasData = getStudents().length > 0;
 
@@ -558,12 +626,20 @@
         /* 명단은 이 기기 것을 지키되, 칸 정의는 서버에 있으면 받아 둔다.
            칸이 없으면 학생의 extra 값을 화면에 그릴 수가 없다. */
         if ((d.fieldDefs || []).length) writeLocal(KEYS.fieldDefs, d.fieldDefs);
+        if (Object.keys(d.classInfo || {}).length) writeLocal(KEYS.classInfo, d.classInfo);
         return d;                      /* 이 기기 것을 지킨다 */
       }
 
       writeLocal(KEYS.students, d.students);
       writeLocal(KEYS.snippets, d.snippets);
-      writeLocal(KEYS.fieldDefs, d.fieldDefs || []);
+      /* SQL 을 아직 실행하지 않았으면 서버가 칸을 제대로 모른다.
+         받아온 것으로 덮어쓰면 이 기기에 만들어 둔 반 칸이 사라진다. */
+      if (missingTables.indexOf('field_defs.scope') === -1) {
+        writeLocal(KEYS.fieldDefs, d.fieldDefs || []);
+      }
+      if (missingTables.indexOf('class_info') === -1) {
+        writeLocal(KEYS.classInfo, d.classInfo || {});
+      }
       writeLocal(KEYS.sent, d.sent);
       writeLocal(KEYS.published, d.published);
 
@@ -640,9 +716,11 @@
       return {
         id: isUuid(f.id) ? f.id : newId(),
         key: f.key, label: f.label, type: f.type,
-        options: f.options || [], showInTable: f.showInTable !== false, sortOrder: i
+        options: f.options || [], showInTable: f.showInTable !== false,
+        scope: scopeOf(f), sortOrder: i
       };
     });
+    var classInfo = getClassInfo();
 
     /* 먼저 로컬을 새 id 로 바꿔 둔다. 중간에 실패해도 다시 시도할 수 있다. */
     writeLocal(KEYS.students, fixed);
@@ -659,6 +737,9 @@
     return global.DB.syncStudents(fixed)
       .then(function () { return global.DB.saveSnippets(snippets); })
       .then(function () { return fields.length ? global.DB.syncFieldDefs(fields) : null; })
+      .then(function () {
+        return Object.keys(classInfo).length ? global.DB.syncClassInfo(classInfo) : null;
+      })
       .then(function () {
         if (!draft || !draft.weekStart) return null;
         var jobs = [];
@@ -745,8 +826,11 @@
 
     getSnippets: getSnippets, saveSnippets: saveSnippets,
     getFieldDefs: getFieldDefs, saveFieldDefs: saveFieldDefs,
-    newFieldKey: newFieldKey, FIELD_TYPES: FIELD_TYPES,
-    fieldValue: fieldValue, fieldText: fieldText,
+    newFieldKey: newFieldKey, FIELD_TYPES: FIELD_TYPES, SCOPES: SCOPES,
+    fieldValue: fieldValue, fieldText: fieldText, scopeOf: scopeOf,
+    getClassInfo: getClassInfo, saveClassInfo: saveClassInfo,
+    serverMissing: serverMissing,
+    setClassExtra: setClassExtra, classExtra: classExtra,
 
     getToken: getToken, saveToken: saveToken, clearToken: clearToken,
     clearAll: clearAll, clearStudentsOnly: clearStudentsOnly

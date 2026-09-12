@@ -717,39 +717,37 @@
     updateCommentCount();
   });
 
-  /* ---------- 학생 정보 불러오기 ----------
-     명단에서 만든 칸(시험 범위·수업 진도 …)에 적어 둔 내용을
-     코멘트 창 위에 보여 주고, 누르면 코멘트에 넣는다.
-     값이 빈 칸은 보이지 않는다. */
+  /* ---------- 정보 불러오기 ----------
+     명단에서 만든 칸에 적어 둔 내용을 코멘트 창 위에 보여 주고,
+     누르면 코멘트에 넣는다. 값이 빈 칸은 보이지 않는다.
 
-  function renderInfoBar() {
-    var host = $('#infoBar');
-    var defs = Store.getFieldDefs();
-    var s = students().find(function (x) { return x.id === commentTargetId; });
+     두 줄로 나눠 보여 준다.
+       반  — 이 학생이 속한 반에 적어 둔 것 (시험 범위, 수업 진도 …)
+       학생 — 이 학생에게만 적어 둔 것
+     같은 이름의 칸이 양쪽에 있을 수 있어서 어느 쪽인지 보이게 한다. */
 
-    host.textContent = '';
-
+  function infoRow(kind, title, defs, owner) {
     var usable = defs.filter(function (f) {
       if (f.type === 'checkbox') return false;      /* 넣을 글자가 없다 */
-      return String(Store.fieldValue(s, f) || '').trim() !== '';
+      return String(Store.fieldValue(owner, f) || '').trim() !== '';
     });
+    if (!usable.length) return null;
 
-    if (!usable.length) { host.hidden = true; return; }
-
-    host.hidden = false;
+    var row = document.createElement('div');
+    row.className = 'info-row info-row--' + kind;
 
     var lab = document.createElement('span');
     lab.className = 'info-bar__label';
-    lab.textContent = '학생 정보';
-    host.appendChild(lab);
+    lab.textContent = title;
+    row.appendChild(lab);
 
     usable.forEach(function (f) {
-      var v = String(Store.fieldValue(s, f)).trim();
+      var v = String(Store.fieldValue(owner, f)).trim();
       var b = document.createElement('button');
       b.type = 'button';
-      b.className = 'info-chip';
+      b.className = 'info-chip info-chip--' + kind;
       b.dataset.key = f.key;
-      b.title = f.label + ': ' + v;
+      b.title = title + ' · ' + f.label + ': ' + v;
 
       var n = document.createElement('span');
       n.className = 'info-chip__name';
@@ -760,8 +758,28 @@
 
       b.appendChild(n);
       b.appendChild(t);
-      host.appendChild(b);
+      row.appendChild(b);
     });
+
+    return row;
+  }
+
+  function renderInfoBar() {
+    var host = $('#infoBar');
+    var s = students().find(function (x) { return x.id === commentTargetId; });
+
+    host.textContent = '';
+
+    var cls = s ? (s.className || '').trim() : '';
+    var rows = [
+      cls ? infoRow('class', '반 ' + cls, Store.getFieldDefs('class'), Store.classExtra(cls)) : null,
+      infoRow('student', '학생', Store.getFieldDefs('student'), s)
+    ].filter(Boolean);
+
+    if (!rows.length) { host.hidden = true; return; }
+
+    host.hidden = false;
+    rows.forEach(function (r) { host.appendChild(r); });
   }
 
   /* 칩을 누르면 커서 자리에 값을 넣는다. 문장 중간에 끼워 쓰는 일이 많다. */
@@ -773,7 +791,10 @@
     var f = Store.getFieldDefs().find(function (x) { return x.key === b.dataset.key; });
     if (!f) return;
 
-    var text = String(Store.fieldValue(s, f) || '').trim();
+    var owner = Store.scopeOf(f) === 'class'
+      ? Store.classExtra((s && s.className) || '')
+      : s;
+    var text = String(Store.fieldValue(owner, f) || '').trim();
     if (!text) return;
 
     var ta = $('#commentText');

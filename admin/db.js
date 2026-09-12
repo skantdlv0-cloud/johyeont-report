@@ -60,6 +60,7 @@
       type: f.type || 'text',
       options: f.options || [],
       show_in_table: f.showInTable !== false,
+      scope: f.scope === 'class' ? 'class' : 'student',
       sort_order: f.sortOrder || 0
     };
   }
@@ -73,6 +74,8 @@
       options: r.options || [],
       /* 예전 행에는 show_in_table 이 없다. 없으면 보이는 쪽으로 본다. */
       showInTable: r.show_in_table !== false,
+      /* 예전 행에는 scope 가 없다. 전부 학생 칸이었다. */
+      scope: r.scope === 'class' ? 'class' : 'student',
       sortOrder: r.sort_order || 0
     };
   }
@@ -82,6 +85,14 @@
      칸을 다 지우는 것은 자연스러운 조작이고, 지워도 학생 자료(extra)는 남는다. */
   function syncFieldDefs(list) {
     var c = sb();
+
+    /* scope 칸이 아직 없으면(SQL 미실행) 서버로 보내지 않는다.
+       보내면 오류가 나고, scope 를 빼고 보내면 반 칸이 학생 칸으로 둔갑한다.
+       SQL 을 실행하고 다시 저장하면 그때 한꺼번에 올라간다. */
+    if (missingTables.indexOf('field_defs.scope') !== -1) {
+      return Promise.resolve({ skipped: true });
+    }
+
     var rows = (list || []).map(toDbField);
 
     if (!rows.length) {
@@ -94,6 +105,39 @@
       .then(function () {
         var ids = rows.map(function (r) { return r.id; });
         return c.from('field_defs').delete().not('id', 'in', '(' + ids.join(',') + ')').then(check);
+      });
+  }
+
+  /* ---------- 반 현황 (class_info) ----------
+     { '운유1': { f_xxx: '값' }, … } 모양으로 주고받는다. */
+
+  function syncClassInfo(map) {
+    var c = sb();
+    var names = Object.keys(map || {});
+
+    /* 표가 아직 없으면(SQL 미실행) 서버로 보내지 않는다.
+       이 기기에는 남아 있으므로, SQL 을 실행하고 다시 저장하면 올라간다. */
+    if (missingTables.indexOf('class_info') !== -1) {
+      return Promise.resolve({ skipped: true });
+    }
+
+    if (!names.length) {
+      /* 반이 하나도 없으면 아무것도 하지 않는다.
+         명단이 아직 안 올라온 상태에서 서버를 비우면 안 된다. */
+      return Promise.resolve({ skipped: true });
+    }
+
+    var rows = names.map(function (n) {
+      return { class_name: n, extra: map[n] || {}, updated_at: new Date().toISOString() };
+    });
+
+    return c.from('class_info').upsert(rows, { onConflict: 'class_name' })
+      .then(check)
+      .then(function () {
+        /* 없어진 반은 지운다. 반 이름을 바꾸면 옛 이름 줄이 남기 때문이다. */
+        var list = names.map(function (n) { return '"' + String(n).split('"').join('""') + '"'; });
+        return c.from('class_info')
+          .delete().not('class_name', 'in', '(' + list.join(',') + ')').then(check);
       });
   }
 
@@ -129,8 +173,25 @@
      전체 읽기 — 로그인 직후 한 번
      ============================================================ */
 
+  /* 아직 SQL 을 실행하지 않아 표가 없을 수도 있는 조회.
+     이걸로 로그인 전체가 막히면 안 되므로, 실패하면 빈 값으로 넘어간다.
+     대신 어느 표가 없었는지 적어 두고 화면에서 알려 준다. */
+  var missingTables = [];
+
+  function optional(name, q) {
+    function miss() {
+      if (missingTables.indexOf(name) === -1) missingTables.push(name);
+      return { data: [], error: null };
+    }
+    return Promise.resolve(q).then(
+      function (r) { return (r && r.error) ? miss() : r; },
+      function () { return miss(); }
+    );
+  }
+
   function loadAll() {
     var c = sb();
+    missingTables = [];
     return Promise.all([
       c.from('students').select('*').order('class_name').order('name'),
       c.from('snippets').select('*').order('sort_order'),
@@ -138,7 +199,10 @@
       c.from('entries').select('*'),
       c.from('sent').select('*'),
       c.from('published').select('*'),
-      c.from('field_defs').select('*').order('sort_order')
+      c.from('field_defs').select('*').order('sort_order'),
+      optional('class_info', c.from('class_info').select('*')),
+      /* migration-004 가 scope 칸도 같이 만든다. 없는 칸을 고르면 오류가 난다. */
+      optional('field_defs.scope', c.from('field_defs').select('scope').limit(1))
     ]).then(function (res) {
       res.forEach(function (r) {
         if (r.error) throw new Error('불러오기 실패: ' + r.error.message);
@@ -190,7 +254,13 @@
         entries: entries,
         sent: sent,
         published: published,
-        fieldDefs: res[6].data.map(fromDbField)
+        fieldDefs: res[6].data.map(fromDbField),
+        classInfo: (function () {
+          var m = {};
+          (res[7].data || []).forEach(function (r) { m[r.class_name] = r.extra || {}; });
+          return m;
+        })(),
+        missingTables: missingTables.slice()
       };
     });
   }
@@ -382,7 +452,9 @@
     weekSendData: weekSendData,
     toDbStudent: toDbStudent,
     fromDbStudent: fromDbStudent,
-    syncFieldDefs: syncFieldDefs
+    syncFieldDefs: syncFieldDefs,
+    syncClassInfo: syncClassInfo,
+    missingTables: function () { return missingTables.slice(); }
   };
 
 })(window);

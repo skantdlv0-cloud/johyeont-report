@@ -99,7 +99,8 @@
      ============================================================ */
 
   var students = Store.getStudents();
-  var fields = Store.getFieldDefs();  /* 내가 만든 칸 */
+  var fields = Store.getFieldDefs('student');       /* 학생마다 적는 칸 */
+  var classFields = Store.getFieldDefs('class');   /* 반마다 적는 칸 */
   var collapsed = {};                 /* 반별 접힘 상태 */
   var filterText = '';
   var filterClass = '';
@@ -224,11 +225,13 @@
         '<div class="empty-state">아직 등록된 학생이 없습니다.<br>' +
         '<b>+ 학생 추가</b>를 눌러 시작하거나, 아래에서 백업 파일을 불러오세요.</div>';
       refreshClassOptions();
+      renderClassInfo();
       return;
     }
     if (!visible.length) {
       rosterList.innerHTML = '<div class="empty-state">조건에 맞는 학생이 없습니다.</div>';
       refreshClassOptions();
+      renderClassInfo();
       return;
     }
 
@@ -293,6 +296,7 @@
     rosterList.appendChild(frag);
     refreshClassOptions();
     syncExpandButton();
+    renderClassInfo();          /* 반이 늘거나 줄면 반 현황도 따라간다 */
   }
 
   /* 학생이 많으면 반별로 접은 채 시작한다. 100명이 한꺼번에 펼쳐지면 화면이 너무 길어진다. */
@@ -646,43 +650,221 @@
   });
 
   /* ============================================================
+     반 현황 — 반마다 한 번만 적으면 되는 내용
+     ============================================================ */
+
+  var classInfoModal = $('#classInfoModal');
+  var editingClass = null;
+
+  /* 한 반에 몇 칸이나 채웠는지 */
+  function classFilled(name) {
+    var bag = Store.classExtra(name);
+    return classFields.filter(function (f) {
+      var v = bag[f.key];
+      return v !== undefined && v !== '' && v !== false;
+    }).length;
+  }
+
+  function renderClassInfo() {
+    var host = $('#classInfoList');
+    var classes = Store.getClasses();
+    host.textContent = '';
+
+    /* 서버에 표가 없으면(SQL 미실행) 그렇다고 말해 준다.
+       기능은 그대로 쓰되 이 기기에만 남는다. */
+    var notice = $('#classSqlNotice');
+    if (notice) notice.hidden = !Store.serverMissing().length;
+
+    if (!classes.length) {
+      host.innerHTML =
+        '<div class="empty-state">아직 반이 없습니다.<br>' +
+        '학생을 추가하면서 반 이름을 적으면 여기에 나옵니다.</div>';
+      return;
+    }
+
+    if (!classFields.length) {
+      host.innerHTML =
+        '<div class="empty-state">아직 만든 반 칸이 없습니다.<br>' +
+        '<b>반 칸 관리</b>에서 시험 범위·수업 진도 같은 칸을 만들어 보세요.</div>';
+      return;
+    }
+
+    var frag = document.createDocumentFragment();
+
+    classes.forEach(function (c) {
+      var bag = Store.classExtra(c.name);
+
+      var card = document.createElement('div');
+      card.className = 'cinfo';
+      card.dataset.cls = c.name;
+
+      var head = document.createElement('div');
+      head.className = 'cinfo__head';
+      head.innerHTML =
+        '<span class="cinfo__name"></span>' +
+        '<span class="cinfo__count"></span>' +
+        '<span class="spacer"></span>' +
+        '<button class="btn btn--sm" type="button" data-cact="edit">적기</button>';
+      head.querySelector('.cinfo__name').textContent = c.name;
+      head.querySelector('.cinfo__count').textContent = c.count + '명';
+      card.appendChild(head);
+
+      var body = document.createElement('div');
+      body.className = 'cinfo__body';
+
+      classFields.forEach(function (f) {
+        var v = Store.fieldText(bag, f);
+        var line = document.createElement('div');
+        line.className = 'cinfo__line' + (v ? '' : ' is-empty');
+
+        var name = document.createElement('span');
+        name.className = 'cinfo__label';
+        name.textContent = f.label;
+
+        var val = document.createElement('span');
+        val.className = 'cinfo__val';
+        val.textContent = v || '비어 있음';
+
+        line.appendChild(name);
+        line.appendChild(val);
+        body.appendChild(line);
+      });
+
+      card.appendChild(body);
+      frag.appendChild(card);
+    });
+
+    host.appendChild(frag);
+  }
+
+  function openClassInfoModal(name) {
+    editingClass = name;
+
+    $('#classInfoTitle').textContent = name + ' 반 현황';
+    $('#classInfoDesc').textContent =
+      '여기에 적은 내용은 ' + name + ' 반 학생 전체에 쓰입니다';
+
+    var host = $('#classInfoFields');
+    host.textContent = '';
+
+    var bag = Store.classExtra(name);
+    var grid = document.createElement('div');
+    grid.className = 'grid2';
+
+    classFields.forEach(function (f) {
+      var node = extraFieldNode(f);
+      if (f.type === 'textarea') node.classList.add('grid2__full');
+      var input = node.querySelector('[data-role="extra"]');
+      var v = bag[f.key];
+      if (f.type === 'checkbox') input.checked = !!v;
+      else input.value = v == null ? '' : String(v);
+      grid.appendChild(node);
+    });
+
+    host.appendChild(grid);
+
+    $('#classInfoError').classList.remove('is-on');
+    classInfoModal.showModal();
+  }
+
+  $('#classInfoList').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-cact="edit"]');
+    if (!btn) return;
+    var card = btn.closest('.cinfo');
+    if (card) openClassInfoModal(card.dataset.cls);
+  });
+
+  $('#btnClassInfoCancel').addEventListener('click', function () { classInfoModal.close(); });
+
+  $('#classInfoForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!editingClass) { classInfoModal.close(); return; }
+
+    /* 지금 없는 칸(나중에 지운 칸)에 적혀 있던 값은 그대로 둔다 */
+    var out = {};
+    var known = {};
+    classFields.forEach(function (f) { known[f.key] = true; });
+    var old = Store.classExtra(editingClass);
+    Object.keys(old).forEach(function (k) { if (!known[k]) out[k] = old[k]; });
+
+    classFields.forEach(function (f) {
+      var wrap = $('#classInfoFields [data-key="' + f.key + '"]');
+      if (!wrap) return;
+      var input = wrap.querySelector('[data-role="extra"]');
+      if (!input) return;
+      if (f.type === 'checkbox') { if (input.checked) out[f.key] = true; return; }
+      var v = String(input.value || '').trim();
+      if (v) out[f.key] = v;
+    });
+
+    Store.setClassExtra(editingClass, out);
+    classInfoModal.close();
+    renderClassInfo();
+    window.dispatchEvent(new CustomEvent('jt:fields'));
+    toast(editingClass + ' 반 현황을 저장했습니다', 'good');
+  });
+
+  /* ============================================================
      칸 관리 — 내가 만든 칸을 추가·수정·이동·삭제
      ============================================================ */
 
   var fieldsModal    = $('#fieldsModal');
   var fieldEditModal = $('#fieldEditModal');
   var editingFieldId = null;
+  var fieldScope     = 'student';        /* 지금 관리 중인 쪽 — 'student' | 'class' */
+
+  /* 지금 보고 있는 쪽의 칸 목록 */
+  function scopeList() { return fieldScope === 'class' ? classFields : fields; }
+  function scopeName() { return Store.SCOPES[fieldScope].name; }
 
   function typeName(t) {
     var hit = Store.FIELD_TYPES.find(function (x) { return x.type === t; });
     return hit ? hit.name : t;
   }
 
-  /* 이 칸을 실제로 쓰고 있는 학생 수 — 지우기 전에 알려 준다 */
+  /* 이 칸을 실제로 쓰고 있는 곳이 몇인지 — 지우기 전에 알려 준다.
+     학생 칸이면 학생 수, 반 칸이면 반 수를 센다. */
   function usedCount(f) {
-    return students.filter(function (s) {
-      var v = (s.extra || {})[f.key];
+    function has(bag) {
+      var v = (bag || {})[f.key];
       return v !== undefined && v !== '' && v !== false;
-    }).length;
+    }
+    if (Store.scopeOf(f) === 'class') {
+      var info = Store.getClassInfo();
+      return Object.keys(info).filter(function (n) { return has(info[n]); }).length;
+    }
+    return students.filter(function (s) { return has(s.extra); }).length;
   }
+
+  function usedUnit(f) { return Store.scopeOf(f) === 'class' ? '개 반' : '명'; }
 
   function renderFieldList() {
     var host = $('#fieldList');
+    var list = scopeList();
     host.textContent = '';
 
-    $('#fieldsCount').textContent = fields.length
-      ? fields.length + '개 · 표에 보이는 칸 ' +
-        fields.filter(function (f) { return f.showInTable !== false; }).length + '개'
+    $('#fieldsTitle').textContent = scopeName() + ' 관리';
+    $('#fieldsDesc').textContent = fieldScope === 'class'
+      ? '시험 범위·수업 진도처럼 반마다 한 번만 적으면 되는 칸을 만듭니다. ' +
+        '만든 칸은 명단 아래 [반 현황] 에 나옵니다.'
+      : '학생마다 따로 적어 둘 칸을 만듭니다. ' +
+        '만든 칸은 명단 표와 학생 수정 창에 같이 나옵니다.';
+
+    $('#fieldsCount').textContent = list.length
+      ? (fieldScope === 'class'
+          ? list.length + '개'
+          : list.length + '개 · 표에 보이는 칸 ' +
+            list.filter(function (f) { return f.showInTable !== false; }).length + '개')
       : '';
 
-    if (!fields.length) {
+    if (!list.length) {
       host.innerHTML =
-        '<div class="empty-state">아직 만든 칸이 없습니다.<br>' +
+        '<div class="empty-state">아직 만든 ' + scopeName() + '이 없습니다.<br>' +
         '<b>+ 칸 추가</b>로 시험 범위·수업 진도 같은 칸을 만들어 보세요.</div>';
       return;
     }
 
-    fields.forEach(function (f, i) {
+    list.forEach(function (f, i) {
       var row = document.createElement('div');
       row.className = 'field-row';
       row.dataset.id = f.id;
@@ -695,7 +877,7 @@
           '<button class="btn btn--sm btn--ghost" type="button" data-fact="up"' +
             (i === 0 ? ' disabled' : '') + ' aria-label="위로">↑</button>' +
           '<button class="btn btn--sm btn--ghost" type="button" data-fact="down"' +
-            (i === fields.length - 1 ? ' disabled' : '') + ' aria-label="아래로">↓</button>' +
+            (i === list.length - 1 ? ' disabled' : '') + ' aria-label="아래로">↓</button>' +
           '<button class="btn btn--sm" type="button" data-fact="edit">수정</button>' +
           '<button class="btn btn--sm btn--danger" type="button" data-fact="del">삭제</button>' +
         '</div>';
@@ -707,9 +889,11 @@
         meta.push((f.options || []).slice(0, 4).join('/') +
                   ((f.options || []).length > 4 ? '…' : ''));
       }
-      meta.push(f.showInTable !== false ? '표에 보임' : '표에 숨김');
+      if (fieldScope !== 'class') {
+        meta.push(f.showInTable !== false ? '표에 보임' : '표에 숨김');
+      }
       var n = usedCount(f);
-      if (n) meta.push(n + '명 작성됨');
+      if (n) meta.push(n + usedUnit(f) + ' 작성됨');
       row.querySelector('.field-row__meta').textContent = meta.join(' · ');
 
       host.appendChild(row);
@@ -737,6 +921,8 @@
     var hit = Store.FIELD_TYPES.find(function (x) { return x.type === t; });
     $('#fdTypeHint').textContent = hit ? hit.hint : '';
     $('#fdOptionsWrap').hidden = t !== 'select';
+    /* '명단 표에 열로 보이기' 는 학생 칸에만 있는 얘기다 */
+    $('#fdTableWrap').hidden = fieldScope === 'class';
     /* 여러 줄 글은 표에 넣으면 줄이 넘쳐서, 새로 만들 때는 꺼 둔 채로 시작한다 */
     if (t === 'textarea' && editingFieldId === null) $('#fdShowInTable').checked = false;
   }
@@ -744,7 +930,9 @@
 
   function openFieldEdit(f) {
     editingFieldId = f ? f.id : null;
-    $('#fieldEditTitle').textContent = f ? '칸 수정' : '칸 추가';
+    $('#fieldEditTitle').textContent = scopeName() + (f ? ' 수정' : ' 추가');
+    $('#fieldEditDesc').textContent = Store.SCOPES[fieldScope].desc +
+      '. 칸 이름은 나중에 언제든 바꿀 수 있습니다.';
     $('#fdLabel').value = f ? (f.label || '') : '';
     $('#fdType').value  = f ? (f.type || 'text') : 'text';
     $('#fdOptions').value = f && Array.isArray(f.options) ? f.options.join('\n') : '';
@@ -756,17 +944,27 @@
   }
 
   function saveFields(next) {
-    fields = next;
-    Store.saveFieldDefs(fields);
-    fields = Store.getFieldDefs();     /* 순서 번호가 다시 매겨진 것을 받아 온다 */
+    Store.saveFieldDefs(next, fieldScope);
+    /* 순서 번호가 다시 매겨진 것을 받아 온다 */
+    fields = Store.getFieldDefs('student');
+    classFields = Store.getFieldDefs('class');
     renderFieldList();
     render();                          /* 명단 표의 열도 같이 바뀐다 */
+    renderClassInfo();
     window.dispatchEvent(new CustomEvent('jt:fields'));   /* 작성 탭이 따라 바뀐다 */
   }
 
-  $('#btnManageFields').addEventListener('click', function () {
+  function openFieldsModal(scope) {
+    fieldScope = scope;
     renderFieldList();
     fieldsModal.showModal();
+  }
+
+  $('#btnManageFields').addEventListener('click', function () {
+    openFieldsModal('student');
+  });
+  $('#btnManageClassFields').addEventListener('click', function () {
+    openFieldsModal('class');
   });
 
   $('#btnFieldAdd').addEventListener('click', function () { openFieldEdit(null); });
@@ -775,8 +973,7 @@
   /* 학생 수정 창에서 바로 칸 관리로 */
   $('#extraFields').addEventListener('click', function (e) {
     if (!e.target.closest('#btnFieldsFromStudent')) return;
-    renderFieldList();
-    fieldsModal.showModal();
+    openFieldsModal('student');
   });
 
   $('#fieldList').addEventListener('click', function (e) {
@@ -784,11 +981,12 @@
     if (!btn) return;
     var row = btn.closest('.field-row');
     var id = row && row.dataset.id;
-    var i = fields.findIndex(function (f) { return f.id === id; });
+    var list = scopeList();
+    var i = list.findIndex(function (f) { return f.id === id; });
     if (i < 0) return;
 
     var act = btn.dataset.fact;
-    var next = fields.slice();
+    var next = list.slice();
 
     if (act === 'up' && i > 0) {
       next.splice(i - 1, 0, next.splice(i, 1)[0]);
@@ -799,15 +997,15 @@
       saveFields(next);
 
     } else if (act === 'edit') {
-      openFieldEdit(fields[i]);
+      openFieldEdit(list[i]);
 
     } else if (act === 'del') {
-      var f = fields[i];
+      var f = list[i];
       var n = usedCount(f);
       confirmAsk(
-        '‘' + f.label + '’ 칸을 지울까요?',
-        n ? n + '명이 적어 둔 내용이 화면에서 사라집니다. (다시 만들어도 살아나지 않습니다)'
-          : '아직 아무도 적지 않은 칸입니다.',
+        '‘' + f.label + '’ ' + scopeName() + '을 지울까요?',
+        n ? n + usedUnit(f) + '이 적어 둔 내용이 화면에서 사라집니다. (다시 만들어도 살아나지 않습니다)'
+          : '아직 아무 데도 적지 않은 칸입니다.',
         '지우기'
       ).then(function (ok) {
         if (!ok) return;
@@ -829,11 +1027,14 @@
 
     if (!label) { showFieldEditError('칸 이름을 적어 주세요.'); return; }
 
-    var dup = fields.find(function (f) {
+    /* 이름이 겹치는지는 같은 쪽 안에서만 본다.
+       학생 칸 '시험 범위' 와 반 칸 '시험 범위' 는 따로 둘 수 있어야 한다. */
+    var list = scopeList();
+    var dup = list.find(function (f) {
       return f.label === label && f.id !== editingFieldId;
     });
     if (dup) {
-      showFieldEditError('‘' + label + '’ 칸이 이미 있습니다. 다른 이름을 적어 주세요.');
+      showFieldEditError('‘' + label + '’ ' + scopeName() + '이 이미 있습니다. 다른 이름을 적어 주세요.');
       return;
     }
 
@@ -842,23 +1043,24 @@
       return;
     }
 
-    var next = fields.slice();
+    var next = list.slice();
     var i = next.findIndex(function (f) { return f.id === editingFieldId; });
+    var inTable = fieldScope === 'class' ? false : $('#fdShowInTable').checked;
 
     if (i >= 0) {
-      /* key 는 그대로 둔다. 이름만 바꿔도 학생이 적어 둔 값이 따라온다. */
+      /* key 는 그대로 둔다. 이름만 바꿔도 적어 둔 값이 따라온다. */
       next[i] = {
         id: next[i].id, key: next[i].key,
         label: label, type: type, options: opts,
-        showInTable: $('#fdShowInTable').checked,
+        showInTable: inTable, scope: fieldScope,
         sortOrder: next[i].sortOrder
       };
     } else {
       next.push({
         id: Store.newId(),
-        key: Store.newFieldKey(next),
+        key: Store.newFieldKey(),      /* 학생 칸·반 칸을 통틀어 안 겹치게 */
         label: label, type: type, options: opts,
-        showInTable: $('#fdShowInTable').checked,
+        showInTable: inTable, scope: fieldScope,
         sortOrder: next.length
       });
     }
@@ -866,15 +1068,15 @@
     saveFields(next);
     fieldEditModal.close();
 
-    /* 학생 수정 창이 열려 있으면 칸이 바로 보이게 다시 그린다 */
+    /* 열려 있는 입력 창이 있으면 칸이 바로 보이게 다시 그린다 */
     if (studentModal.open) {
       renderExtraFields(editingId
         ? students.find(function (x) { return x.id === editingId; })
         : null);
     }
+    if (classInfoModal.open && editingClass) openClassInfoModal(editingClass);
 
-    toast(i >= 0 ? '‘' + label + '’ 칸을 고쳤습니다'
-                 : '‘' + label + '’ 칸을 만들었습니다', 'good');
+    toast('‘' + label + '’ ' + scopeName() + (i >= 0 ? '을 고쳤습니다' : '을 만들었습니다'), 'good');
   });
 
   /* ============================================================
@@ -1038,7 +1240,8 @@
     function apply() {
       Store.restorePayload(payload);
       students = Store.getStudents();
-      fields = Store.getFieldDefs();
+      fields = Store.getFieldDefs('student');
+      classFields = Store.getFieldDefs('class');
       settings = Store.read(Store.KEYS.settings, {});
       collapsed = {};
       filterText = '';
@@ -1142,7 +1345,8 @@
   /* 서버에서 다 받아온 뒤 화면을 새로 그린다 */
   window.addEventListener('jt:loaded', function () {
     students = Store.getStudents();
-    fields = Store.getFieldDefs();
+    fields = Store.getFieldDefs('student');
+    classFields = Store.getFieldDefs('class');
     settings = Store.read(Store.KEYS.settings, {});
     collapsed = {};
     collapseIfCrowded();

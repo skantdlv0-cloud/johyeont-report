@@ -1340,3 +1340,94 @@ dialog.modal--wide { width: min(680px, calc(100vw - 24px)); }
   .roster td.roster__extra.is-empty { display: none; }
   .roster-scroll { overflow-x: visible; }
 }
+
+/* ============================================================
+   반 현황 — 반마다 한 번만 적는 내용
+   ============================================================ */
+
+#classInfoList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.cinfo {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.cinfo__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.cinfo__name { font-weight: 700; color: var(--ink-deep); }
+
+.cinfo__count {
+  font-size: 11.5px;
+  color: var(--ink-light);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.cinfo__body { padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+
+.cinfo__line { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+
+.cinfo__label {
+  flex: 0 0 auto;
+  min-width: 72px;
+  font-size: 11.5px;
+  color: var(--ink-light);
+}
+
+.cinfo__val {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cinfo__line.is-empty .cinfo__val { color: #C9C0D4; }
+
+/* ---- 코멘트 창 — 반 줄과 학생 줄을 구분한다 ---- */
+
+.info-bar { display: block; }
+
+.info-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-row + .info-row { margin-top: 7px; }
+
+.info-bar__label {
+  flex: 0 0 auto;
+  min-width: 62px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-light);
+}
+
+/* 반 칸은 라벤더, 학생 칸은 분홍 — 색으로도 어느 쪽인지 알 수 있게 */
+.info-chip--class      { background: #F5F1FD; border-color: #DED3F5; }
+.info-chip--class:hover{ background: #ECE3FB; border-color: #C8B6FF; }
+.info-chip--student      { background: #FFF5F8; border-color: #F7DCE6; }
+.info-chip--student:hover{ background: #FFE9F0; border-color: #FFC4D6; }
+
+@media (max-width: 720px) {
+  #classInfoList { grid-template-columns: 1fr; }
+  .cinfo__line { flex-direction: column; gap: 2px; }
+  .cinfo__label { min-width: 0; }
+  .info-bar__label { min-width: 0; width: 100%; }
+}
