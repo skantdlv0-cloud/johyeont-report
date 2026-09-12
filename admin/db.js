@@ -252,6 +252,68 @@
       });
   }
 
+  /* ---------- 공용 설정 (인사말 등) ----------
+     기기마다 따로 두지 않고 서버에 둔다.
+     선생님이 문구를 고치면 조교 노트북에도 같이 반영된다. */
+
+  function getSetting(key) {
+    return sb().from('app_settings').select('*').eq('key', key).limit(1)
+      .then(function (r) {
+        if (r.error) throw new Error(r.error.message);
+        return (r.data && r.data.length) ? r.data[0].value : null;
+      });
+  }
+
+  function saveSetting(key, value, by) {
+    return sb().from('app_settings').upsert({
+      key: key, value: value, updated_by: by || '', updated_at: new Date().toISOString()
+    }, { onConflict: 'key' }).then(check);
+  }
+
+  /* ---------- 발행된 주차 목록 ----------
+     ④ 발송 탭에서 주차를 골라 볼 때 쓴다. */
+  function publishedWeeks() {
+    return sb().from('published').select('week_start')
+      .order('week_start', { ascending: false })
+      .then(function (r) {
+        if (r.error) throw new Error(r.error.message);
+        var seen = {};
+        var out = [];
+        (r.data || []).forEach(function (row) {
+          if (seen[row.week_start]) return;
+          seen[row.week_start] = 1;
+          out.push(row.week_start);
+        });
+        return out;
+      });
+  }
+
+  /* 그 주차의 발행 이력 + 보냄 표시를 한 번에 */
+  function weekSendData(weekStart) {
+    var c = sb();
+    return Promise.all([
+      c.from('published').select('*').eq('week_start', weekStart),
+      c.from('sent').select('*').eq('week_start', weekStart),
+      c.from('week_common').select('week_start,week_end').eq('week_start', weekStart).limit(1)
+    ]).then(function (res) {
+      res.forEach(function (r) { if (r.error) throw new Error(r.error.message); });
+
+      var published = {};
+      res[0].data.forEach(function (r) {
+        published[r.student_id] = { path: r.path, url: r.url, publishedAt: r.published_at };
+      });
+
+      var sent = {};
+      res[1].data.forEach(function (r) {
+        sent[r.student_id] = { at: r.sent_at, via: r.via, by: r.sent_by };
+      });
+
+      var weekEnd = (res[2].data && res[2].data.length) ? res[2].data[0].week_end : '';
+
+      return { published: published, sent: sent, weekEnd: weekEnd };
+    });
+  }
+
   function check(r) {
     if (r && r.error) throw new Error(r.error.message);
     return r;
@@ -267,6 +329,10 @@
     unmarkSent: unmarkSent,
     savePublished: savePublished,
     lastCommonOf: lastCommonOf,
+    getSetting: getSetting,
+    saveSetting: saveSetting,
+    publishedWeeks: publishedWeeks,
+    weekSendData: weekSendData,
     toDbStudent: toDbStudent,
     fromDbStudent: fromDbStudent
   };

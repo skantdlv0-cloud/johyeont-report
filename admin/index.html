@@ -75,6 +75,9 @@
       <button class="tab" role="tab" id="tab-publish" aria-controls="panel-publish" aria-selected="false">
         <span class="tab__num">3</span>발행
       </button>
+      <button class="tab" role="tab" id="tab-send" aria-controls="panel-send" aria-selected="false">
+        <span class="tab__num">4</span>발송
+      </button>
     </nav>
   </div>
 </header>
@@ -392,9 +395,46 @@
       <div class="notice notice--info">
         <span class="notice__icon" aria-hidden="true">📨</span>
         <div class="notice__body">
-          링크 복사와 문자 보내기는 <b>E단계</b>에서 붙입니다.
-          지금은 주소만 확인할 수 있습니다.
+          보내기는 <b>④ 발송</b> 탭에서 합니다. 주차를 골라 나중에 이어서 보낼 수도 있습니다.
         </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       ④ 발송
+       ============================================================ -->
+  <section id="panel-send" role="tabpanel" aria-labelledby="tab-send" hidden>
+
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">발송</h2>
+        <p class="panel__hint" id="sendProgress"></p>
+        <div class="spacer"></div>
+        <button class="btn btn--sm" id="btnSendRefresh" type="button">새로고침</button>
+      </div>
+
+      <div class="toolbar">
+        <select class="select" id="sendWeek" aria-label="주차 선택"></select>
+        <select class="select" id="sendFilter" aria-label="보냄 여부 필터">
+          <option value="all">전체</option>
+          <option value="todo">안 보낸 학생만</option>
+          <option value="done">보낸 학생만</option>
+        </select>
+        <button class="btn btn--sm" id="btnEditGreeting" type="button">인사말 고치기</button>
+      </div>
+
+      <div id="sendList" aria-live="polite"></div>
+    </div>
+
+    <div class="notice notice--info" id="phoneLinkNote">
+      <span class="notice__icon" aria-hidden="true">💬</span>
+      <div class="notice__body">
+        <b>[문자 보내기]</b>를 누르면 이 기기의 문자 앱이 열립니다.
+        노트북에서는 Windows <b>휴대폰과 연결</b> 앱이 열립니다
+        (처음 한 번은 폰과 연결해 두어야 합니다).
+        앱이 안 열리면 <b>[문구 복사]</b>로 복사해서 붙여넣으세요.
       </div>
     </div>
 
@@ -590,6 +630,47 @@
   </form>
 </dialog>
 
+<!-- 인사말 고치기 -->
+<dialog class="modal" id="greetingModal">
+  <form method="dialog" id="greetingForm">
+    <div class="modal__head">
+      <h2 class="modal__title">인사말 고치기</h2>
+      <p class="modal__desc">모든 기기에 같이 반영됩니다</p>
+    </div>
+    <div class="modal__body">
+      <label class="field">
+        <span class="field__label">문자·카톡 인사말</span>
+        <textarea class="textarea" id="greetingText" rows="4"></textarea>
+        <span class="field__hint">
+          <b>{호칭}</b> 어머님·아버님 · <b>{이름}</b> 학생 이름 · <b>{링크}</b> 레포트 주소
+        </span>
+      </label>
+      <div class="greet-preview" id="greetingPreview"></div>
+      <div class="modal__error" id="greetingError"></div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" type="button" id="btnGreetingCancel">취소</button>
+      <button class="btn btn--primary" type="submit">저장</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 번호 고르기 (연락처가 둘일 때) -->
+<dialog class="modal" id="phonePickModal">
+  <form method="dialog">
+    <div class="modal__head">
+      <h2 class="modal__title" id="phonePickTitle">번호 고르기</h2>
+      <p class="modal__desc">어느 번호로 보낼까요?</p>
+    </div>
+    <div class="modal__body">
+      <div id="phonePickList" class="phone-pick"></div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn" type="button" id="btnPhonePickCancel">취소</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- 맞춤법 확인 -->
 <dialog class="modal" id="spellModal">
   <form method="dialog">
@@ -618,6 +699,7 @@
 <script src="app.js?v=20260912c"></script>
 <script src="write.js?v=20260912c"></script>
 <script src="publish.js?v=20260912c"></script>
+<script src="send.js?v=20260912c"></script>
 <script src="auth.js?v=20260912c"></script>
 </body>
 </html>

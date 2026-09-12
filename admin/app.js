@@ -62,7 +62,8 @@
   var TABS = [
     { tab: '#tab-roster',  panel: '#panel-roster'  },
     { tab: '#tab-write',   panel: '#panel-write'   },
-    { tab: '#tab-publish', panel: '#panel-publish' }
+    { tab: '#tab-publish', panel: '#panel-publish' },
+    { tab: '#tab-send',    panel: '#panel-send'    }
   ];
 
   function selectTab(idx) {
