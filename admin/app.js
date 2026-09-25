@@ -1232,13 +1232,13 @@
     });
   }
 
-  /* 백업을 이 기기에 반영한다. 기존 내용이 있으면 먼저 묻는다. */
+  /* 백업을 지금 명단에 합쳐 넣는다. 기존 내용이 있으면 먼저 묻는다.
+     백업에 없는 학생·칸·반 현황은 지우지 않는다 (Store.restorePayload 를 보라). */
   function applyBackup(payload) {
     var n = payload.students.length;
-    var weeks = Object.keys(payload.sent || {}).length;
 
     function apply() {
-      Store.restorePayload(payload);
+      var r = Store.restorePayload(payload);
       students = Store.getStudents();
       fields = Store.getFieldDefs('student');
       classFields = Store.getFieldDefs('class');
@@ -1249,16 +1249,35 @@
       $('#searchInput').value = '';
       collapseIfCrowded();
       render();
-      toast('학생 ' + n + '명' + (weeks ? ' · 발송 기록 ' + weeks + '주차' : '') + ' 불러왔습니다', 'good');
+
+      var done = [];
+      if (r.updated) done.push('학생 ' + r.updated + '명 되살림');
+      if (r.added)   done.push(r.added + '명 새로 추가');
+      if (r.fields)  done.push('칸 ' + r.fields + '개');
+      if (r.classes) done.push('반 현황 ' + r.classes + '개 반');
+      toast((done.join(' · ') || '백업') + ' 불러왔습니다', 'good');
+
+      /* 지운 것은 없다. 그대로 둔 것을 알려 준다. */
+      var keep = [];
+      if (r.kept) keep.push('백업에 없는 학생 ' + r.kept + '명');
+      if (r.skippedFieldDefs) keep.push('칸 정의');
+      if (r.skippedClassInfo) keep.push('반 현황');
+      if (r.keptDraft) keep.push('작성 중인 주차');
+      if (keep.length) {
+        setTimeout(function () {
+          toast(keep.join(' · ') + '은(는) 지금 것을 그대로 두었습니다', 'warn');
+        }, 2600);
+      }
     }
 
     if (!students.length) { apply(); return; }
 
     return confirmAsk(
       '백업 불러오기',
-      '지금 이 기기에 학생 ' + students.length + '명이 저장되어 있습니다. ' +
-      '백업에 든 ' + n + '명으로 바꿀까요? 지금 내용(발송 기록 포함)은 사라집니다.',
-      '바꾸기'
+      '백업에 든 학생 ' + n + '명을 지금 명단(' + students.length + '명)에 합쳐 넣습니다. ' +
+      '같은 학생은 백업 내용으로 되살리고, 백업에 없는 학생·칸·반 현황은 지우지 않고 그대로 둡니다. ' +
+      '작성 중인 주차와 발송 기록도 지금 것이 남습니다.',
+      '불러오기'
     ).then(function (ok) { if (ok) apply(); });
   }
 

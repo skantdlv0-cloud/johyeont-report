@@ -78,6 +78,10 @@
     });
   }
 
+  /* 칸 관리에서 직접 지울 때만 잠깐 켜진다. saveFieldDefs 를 보라.
+     이게 꺼져 있는데 빈 목록이 오면 서버를 비우지 않는다. */
+  var fieldClearOk = false;
+
   /* 같은 종류의 저장이 연달아 오면 마지막 것만 보낸다 */
   function queueSync(label, delay, fn) {
     if (!syncEnabled || !global.DB) return;
@@ -96,7 +100,11 @@
       queueSync('draft', 800, function () { return pushDraft(value); });
 
     } else if (key === KEYS.fieldDefs) {
-      queueSync('fieldDefs', 500, function () { return global.DB.syncFieldDefs(value); });
+      /* 지금 값을 잡아 둔다 — 디바운스가 끝난 뒤에 읽으면 이미 꺼져 있다 */
+      var allowClear = fieldClearOk;
+      queueSync('fieldDefs', 500, function () {
+        return global.DB.syncFieldDefs(value, { allowClear: allowClear });
+      });
 
     } else if (key === KEYS.classInfo) {
       queueSync('classInfo', 500, function () { return global.DB.syncClassInfo(value); });
@@ -327,7 +335,16 @@
       others.forEach(function (f, i) { f.sortOrder = i; });
       next = others.concat(mine);
     }
-    return write(KEYS.fieldDefs, next);
+
+    /* 여기는 사람이 칸 관리에서 직접 지운 경우다. 마지막 칸까지 지워
+       목록이 비면 서버도 비우는 게 맞다. 다른 경로(백업 불러오기 등)에서
+       빈 목록이 오는 것과 구분하려고 잠깐만 켠다. */
+    fieldClearOk = true;
+    try {
+      return write(KEYS.fieldDefs, next);
+    } finally {
+      fieldClearOk = false;
+    }
   }
 
   /* 칸 이름은 한글이라 그대로 키로 쓸 수 없다(서버가 영문 키만 받는다).
@@ -484,7 +501,8 @@
   }
 
   /* 백업 파일을 풀어 payload 를 돌려준다.
-     { students, settings, sent, published, snippets } */
+     { students, settings, sent, published, snippets, fieldDefs, classInfo }
+     fieldDefs·classInfo 는 백업에 없으면 undefined 다 (빈 값과 구분한다). */
   function importEncrypted(fileObj, password) {
     return Promise.resolve().then(function () {
       var TYPES = ['device-backup', 'students-backup'];   /* 뒤는 예전 형식 */
@@ -492,14 +510,22 @@
         throw new Error('이 파일은 백업 파일이 아닙니다.');
       }
 
+      /* fieldDefs · classInfo 는 예전 형식(students-backup) 파일에 없다.
+         '없는 것' 과 '비어 있는 것' 을 구분해야 한다.
+         없으면 undefined 로 남겨 두고, 복원할 때 아예 건드리지 않는다.
+         빈 값으로 채워 넣으면 그게 그대로 서버로 올라가 칸 정의를 지운다. */
       function normalize(payload) {
         if (!Array.isArray(payload.students)) throw new Error('명단이 들어 있지 않습니다.');
+        var info = payload.classInfo;
+        var hasInfo = info && typeof info === 'object' && !Array.isArray(info);
         return {
           students:  payload.students,
           settings:  payload.settings  || {},
           sent:      payload.sent      || {},
           published: payload.published || {},
           snippets:  payload.snippets  || [],
+          fieldDefs: Array.isArray(payload.fieldDefs) ? payload.fieldDefs : undefined,
+          classInfo: hasInfo ? info : undefined,
           draft:     payload.draft     || null,
           queue:     payload.queue     || {},
           history:   payload.history   || {}
@@ -527,18 +553,129 @@
     });
   }
 
-  /* 백업에서 읽은 내용을 이 기기에 복원한다 */
+  /* 백업에서 읽은 내용을 지금 것에 합쳐 넣는다.
+
+     예전에는 백업으로 통째로 덮어썼다. 그러면 백업을 받은 뒤에 생긴 것이
+     서버에서까지 지워졌다.
+       · 칸 정의가 없는 옛 백업 → 서버 field_defs 가 통째로 비었다
+         (반 현황 값은 남았지만 그릴 칸이 없어 사라진 것처럼 보였다)
+       · 반이 더 적은 백업 → 없는 반의 class_info 줄이 지워졌다
+       · 학생이 더 적은 백업 → 그 학생과 그 학생의 주간 입력이 함께 지워졌다
+
+     그래서 불러오기는 '덮어쓰기' 가 아니라 '합치기' 다.
+       · 백업에 있는 학생·칸·반 현황 → 백업 값으로 되살린다
+       · 백업에 없는 것              → 지우지 않고 그대로 둔다
+       · 작성 중인 주차·발송 기록     → 지금 것이 이긴다 (지난 주차를 덮지 않는다)
+     학생을 정말 빼야 하면 명단에서 직접 지운다.
+
+     돌려준 값은 무엇을 되살렸고 무엇을 그대로 두었는지 화면에서 알리는 데 쓴다. */
   function restorePayload(p) {
-    saveStudents(p.students || []);
-    write(KEYS.settings,  p.settings  || {});
-    write(KEYS.sent,      p.sent      || {});
-    write(KEYS.published, p.published || {});
-    write(KEYS.snippets,  p.snippets  || []);
-    write(KEYS.fieldDefs, p.fieldDefs || []);
-    write(KEYS.classInfo, p.classInfo || {});
-    write(KEYS.queue,     p.queue     || {});
-    write(KEYS.history,   p.history   || {});
-    if (p.draft) write(KEYS.draft, p.draft); else remove(KEYS.draft);
+    var r = { added: 0, updated: 0, kept: 0,
+              fields: 0, classes: 0,
+              skippedFieldDefs: !p.fieldDefs, skippedClassInfo: !p.classInfo,
+              keptDraft: false };
+
+    function copyOf(o) {
+      var c = {};
+      Object.keys(o || {}).forEach(function (k) { c[k] = o[k]; });
+      return c;
+    }
+
+    /* --- 학생: id 로, 없으면 로마자(slug)로 같은 학생을 찾는다.
+           옛 백업은 id 가 's_1a2b' 모양이라 서버 id 와 다르기 때문이다. --- */
+    var idMap = {};
+    var students = getStudents().slice();
+    var touched = {};
+    (p.students || []).forEach(function (b) {
+      var i = students.findIndex(function (x) { return x.id === b.id; });
+      if (i < 0 && b.slug) i = students.findIndex(function (x) { return x.slug === b.slug; });
+      var c = copyOf(b);
+      if (i >= 0) {
+        c.id = students[i].id;
+        c.extra = Object.assign({}, students[i].extra || {}, b.extra || {});
+        if (!touched[c.id]) r.updated++;
+        students[i] = c;
+      } else {
+        if (!isUuid(c.id)) c.id = newId();
+        students.push(c);
+        r.added++;
+      }
+      touched[c.id] = true;
+      idMap[b.id] = c.id;
+    });
+    r.kept = students.length - r.added - r.updated;
+    saveStudents(students);
+
+    /* 주차 → 학생 id → 값 모양을 새 id 로 옮기고, 지금 것을 우선한다 */
+    function mergeByWeek(cur, bak) {
+      var out = {};
+      Object.keys(bak || {}).forEach(function (w) {
+        out[w] = {};
+        Object.keys(bak[w] || {}).forEach(function (sid) {
+          out[w][idMap[sid] || sid] = bak[w][sid];
+        });
+      });
+      Object.keys(cur || {}).forEach(function (w) {
+        out[w] = Object.assign(out[w] || {}, cur[w]);
+      });
+      return out;
+    }
+
+    write(KEYS.settings,  Object.assign({}, p.settings || {}, read(KEYS.settings, {})));
+    write(KEYS.sent,      mergeByWeek(read(KEYS.sent, {}), p.sent));
+    write(KEYS.published, mergeByWeek(read(KEYS.published, {}), p.published));
+    write(KEYS.queue,     Object.assign({}, p.queue   || {}, read(KEYS.queue, {})));
+    write(KEYS.history,   Object.assign({}, p.history || {}, read(KEYS.history, {})));
+
+    /* --- 상용구: 같은 글은 한 번만 --- */
+    var snippets = getSnippets().slice();
+    var have = {};
+    snippets.forEach(function (s) { have[s.text] = true; });
+    (p.snippets || []).forEach(function (s) {
+      if (!s || !s.text || have[s.text]) return;
+      have[s.text] = true;
+      snippets.push({ id: isUuid(s.id) ? s.id : newId(), text: s.text });
+    });
+    saveSnippets(snippets);
+
+    /* --- 칸 정의: id 로, 없으면 key 로 같은 칸을 찾는다 --- */
+    if (p.fieldDefs) {
+      var defs = getFieldDefs().slice();
+      p.fieldDefs.forEach(function (b) {
+        var i = defs.findIndex(function (x) { return x.id === b.id; });
+        if (i < 0) i = defs.findIndex(function (x) { return x.key === b.key; });
+        var c = copyOf(b);
+        if (i >= 0) { c.id = defs[i].id; defs[i] = c; }
+        else { if (!isUuid(c.id)) c.id = newId(); defs.push(c); }
+      });
+      r.fields = p.fieldDefs.length;
+      write(KEYS.fieldDefs, defs);
+    }
+
+    /* --- 반 현황: 반마다, 칸마다 합친다. 백업에 없는 반·칸은 그대로 --- */
+    if (p.classInfo) {
+      var info = copyOf(getClassInfo());
+      Object.keys(p.classInfo).forEach(function (cls) {
+        info[cls] = Object.assign({}, info[cls] || {}, p.classInfo[cls] || {});
+      });
+      r.classes = Object.keys(p.classInfo).length;
+      write(KEYS.classInfo, info);
+    }
+
+    /* --- 작성 중인 주차: 이미 있으면 손대지 않는다.
+           백업의 초안을 쓰면 서버의 그 주차 입력을 옛 값으로 덮는다. --- */
+    var curDraft = read(KEYS.draft, null);
+    if (curDraft && curDraft.weekStart) {
+      r.keptDraft = !!p.draft;
+    } else if (p.draft) {
+      var d = copyOf(p.draft);
+      var e2 = {};
+      Object.keys(d.entries || {}).forEach(function (sid) { e2[idMap[sid] || sid] = d.entries[sid]; });
+      d.entries = e2;
+      write(KEYS.draft, d);
+    }
+
+    return r;
   }
 
   /* ---------- 날짜 ---------- */
